@@ -154,7 +154,6 @@ async function showStatus(): Promise<void> {
 
   const dbPath = resolvePath(config.dbPath);
   const db = createDatabase(dbPath);
-  startDashboardServer({ db, config });
 
   const state = db.getAgentState();
   const turnCount = db.getTurnCount();
@@ -288,6 +287,7 @@ async function run(): Promise<void> {
   // Initialize database
   const dbPath = resolvePath(config.dbPath);
   const db = createDatabase(dbPath);
+  startDashboardServer({ db, config });
 
   // Persist createdAt: only set if not already stored (never overwrite)
   const existingCreatedAt = db.getIdentity("createdAt");
