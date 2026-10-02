@@ -25,6 +25,7 @@ import { consumeNextWakeEvent, insertWakeEvent } from "./state/database.js";
 import { runAgentLoop } from "./agent/loop.js";
 import { ModelRegistry } from "./inference/registry.js";
 import { loadSkills } from "./skills/loader.js";
+import { ensureDefaultSkills } from "./skills/defaults.js";
 import { initStateRepo } from "./git/state-versioning.js";
 import { createSocialClient } from "./social/client.js";
 import { PolicyEngine } from "./agent/policy-engine.js";
@@ -405,10 +406,15 @@ async function run(): Promise<void> {
   const heartbeatConfig = loadHeartbeatConfig(heartbeatConfigPath);
   syncHeartbeatToDb(heartbeatConfig, db);
 
-  // Load skills
+  // Load skills. Sovereign RITTY gets a small built-in baseline on first boot;
+  // user-installed skills continue to use the normal loader and trust checks.
   const skillsDir = config.skillsDir || "~/.automaton/skills";
   let skills: Skill[] = [];
   try {
+    const seeded = ensureDefaultSkills(skillsDir, db);
+    if (seeded > 0) {
+      logger.info(`[${new Date().toISOString()}] Seeded ${seeded} built-in skills.`);
+    }
     skills = loadSkills(skillsDir, db);
     logger.info(`[${new Date().toISOString()}] Loaded ${skills.length} skills.`);
   } catch (err: any) {
