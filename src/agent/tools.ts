@@ -3322,20 +3322,22 @@ export function toolsToInferenceFormat(
           description:
             "Invoke one Automaton tool by exact name. Available tools: " +
             names +
-            ". Put the target tool arguments in arguments_json as a JSON string. For no arguments use {}.",
+            ". Put the target tool arguments directly in the arguments object. For no arguments use {}.",
           parameters: {
             type: "object",
+            additionalProperties: false,
             properties: {
               tool_name: {
                 type: "string",
                 description: "Exact Automaton tool name.",
               },
-              arguments_json: {
-                type: "string",
-                description: "JSON string containing the target tool arguments.",
+              arguments: {
+                type: "object",
+                description: "Arguments for the selected Automaton tool. Use {} when it takes no arguments.",
+                additionalProperties: true,
               },
             },
-            required: ["tool_name", "arguments_json"],
+            required: ["tool_name", "arguments"],
           },
         },
       },
@@ -3376,31 +3378,23 @@ export async function executeTool(
   // no underlying capability is removed.
   if (process.env.RITTY_MODE === "sovereign" && toolName === "invoke_tool") {
     const targetName = typeof args.tool_name === "string" ? args.tool_name : "";
-    const rawTargetArgs = args.arguments_json;
+    const rawTargetArgs = args.arguments;
     let targetArgs: Record<string, unknown> = {};
-    try {
-      if (typeof rawTargetArgs === "string" && rawTargetArgs.trim()) {
-        const parsed = JSON.parse(rawTargetArgs);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          targetArgs = parsed as Record<string, unknown>;
-        } else {
-          throw new Error("arguments_json must decode to a JSON object");
-        }
-      } else if (rawTargetArgs && typeof rawTargetArgs === "object" && !Array.isArray(rawTargetArgs)) {
-        targetArgs = rawTargetArgs as Record<string, unknown>;
-      } else if (rawTargetArgs === undefined) {
-        targetArgs = {};
-      } else {
-        throw new Error("arguments_json must be a JSON object string");
-      }
-    } catch (error) {
+    if (
+      rawTargetArgs !== undefined &&
+      rawTargetArgs !== null &&
+      typeof rawTargetArgs === "object" &&
+      !Array.isArray(rawTargetArgs)
+    ) {
+      targetArgs = rawTargetArgs as Record<string, unknown>;
+    } else if (rawTargetArgs !== undefined) {
       return {
         id: ulid(),
         name: toolName,
         arguments: args,
         result: "",
         durationMs: Date.now() - startTime,
-        error: `Invalid arguments_json: ${error instanceof Error ? error.message : String(error)}`,
+        error: "Invalid arguments: expected a JSON object.",
       };
     }
 
