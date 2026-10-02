@@ -15,6 +15,7 @@ import type {
   InferenceToolDefinition,
 } from "../types.js";
 import { ResilientHttpClient } from "./http-client.js";
+import { compactSovereignGroqMessages, isGroqTpmError, SOVEREIGN_GROQ_MAX_OUTPUT_TOKENS } from "./groq-context.js";
 
 const INFERENCE_TIMEOUT_MS = 60_000;
 
@@ -96,14 +97,24 @@ export function createInferenceClient(
     // Groq's current on-demand organization limits can reject a request when
     // prompt tokens plus requested completion tokens exceed the minute quota.
     // Keep sovereign turns bounded while preserving normal Conway/OpenAI limits.
-    const tokenLimit =
-      backend === "groq"
-        ? Math.min(requestedTokenLimit, Number(process.env.RITTY_GROQ_MAX_OUTPUT_TOKENS || 2048))
-        : requestedTokenLimit;
+    const isSovereignGroq = process.env.RITTY_MODE === "sovereign" && backend === "groq";
+    const configuredGroqMaxOutput = Number(process.env.RITTY_GROQ_MAX_OUTPUT_TOKENS);
+    const tokenLimit = isSovereignGroq
+      ? Math.min(
+          requestedTokenLimit,
+          Number.isFinite(configuredGroqMaxOutput) && configuredGroqMaxOutput > 0
+            ? Math.min(configuredGroqMaxOutput, SOVEREIGN_GROQ_MAX_OUTPUT_TOKENS)
+            : SOVEREIGN_GROQ_MAX_OUTPUT_TOKENS,
+        )
+      : requestedTokenLimit;
+
+    const safeMessages = isSovereignGroq
+      ? compactSovereignGroqMessages(messages)
+      : messages;
 
     const body: Record<string, unknown> = {
       model,
-      messages: messages.map(formatMessage),
+      messages: safeMessages.map(formatMessage),
       stream: false,
     };
 
@@ -149,14 +160,33 @@ export function createInferenceClient(
       await throttleGroq();
     }
 
-    return chatViaOpenAiCompatible({
-      model,
-      body,
-      apiUrl: openAiLikeApiUrl,
-      apiKey: openAiLikeApiKey,
-      backend,
-      httpClient,
-    });
+    try {
+      return await chatViaOpenAiCompatible({
+        model,
+        body,
+        apiUrl: openAiLikeApiUrl,
+        apiKey: openAiLikeApiKey,
+        backend,
+        httpClient,
+      });
+    } catch (error) {
+      if (isSovereignGroq && isGroqTpmError(error)) {
+        const emergencyBody = {
+          ...body,
+          max_completion_tokens: 128,
+          messages: compactSovereignGroqMessages(messages, true).map(formatMessage),
+        };
+        return chatViaOpenAiCompatible({
+          model,
+          body: emergencyBody,
+          apiUrl: openAiLikeApiUrl,
+          apiKey: openAiLikeApiKey,
+          backend,
+          httpClient,
+        });
+      }
+      throw error;
+    }
   };
 
   /**
