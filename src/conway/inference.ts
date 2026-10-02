@@ -184,11 +184,20 @@ export function createInferenceClient(
       // limits), fail over immediately through a small Gemini model chain.
       // We deliberately do not retry the quota-limited Groq request here.
       if (backend === "groq" && geminiApiKey) {
-        const configuredGemini = process.env.RITTY_GEMINI_MODEL || "gemini-3.7-flash";
-        const geminiCandidates = Array.from(new Set([
-          configuredGemini,
+        // Ignore stale/deprecated RITTY_GEMINI_MODEL values. Google currently
+        // exposes Gemini 3.8/3.7/3.6/3.5 Flash for the API.
+        const supportedGeminiModels = [
+          "gemini-3.8-flash",
+          "gemini-3.7-flash",
           "gemini-3.6-flash",
-          "gemini-2.5-flash",
+          "gemini-3.5-flash",
+        ];
+        const configuredGemini = process.env.RITTY_GEMINI_MODEL;
+        const geminiCandidates = Array.from(new Set([
+          ...(configuredGemini && supportedGeminiModels.includes(configuredGemini)
+            ? [configuredGemini]
+            : []),
+          ...supportedGeminiModels,
         ]));
 
         let lastGeminiError: unknown = undefined;
