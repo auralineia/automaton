@@ -51,6 +51,12 @@ state.db-shm
 logs/
 *.log
 *.err
+
+# Runtime-generated data — keep the state repo small and fast
+sandboxes/
+skills/
+cache/
+tmp/
 `;
 
   await conway.writeFile(`${dir}/.gitignore`, gitignore);
