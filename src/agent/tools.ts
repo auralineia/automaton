@@ -3313,48 +3313,29 @@ export function toolsToInferenceFormat(
   tools: AutomatonTool[],
 ): InferenceToolDefinition[] {
   if (process.env.RITTY_MODE === "sovereign") {
+    const names = tools.map((t) => t.name).join(", ");
     return [
-      {
-        type: "function" as const,
-        function: {
-          name: "list_available_tools",
-          description:
-            "List available Automaton tools. Use query to find a capability and receive compact parameter schemas before calling invoke_tool.",
-          parameters: {
-            type: "object",
-            properties: {
-              query: {
-                type: "string",
-                description: "Optional keyword to filter tool names/descriptions.",
-              },
-              limit: {
-                type: "number",
-                description: "Maximum results (1-12). Default 8.",
-              },
-            },
-          },
-        },
-      },
       {
         type: "function" as const,
         function: {
           name: "invoke_tool",
           description:
-            "Invoke any Automaton tool by exact name. Use list_available_tools first to discover the exact name and compact arguments.",
+            "Invoke one Automaton tool by exact name. Available tools: " +
+            names +
+            ". Put the target tool arguments in arguments_json as a JSON string. For no arguments use {}.",
           parameters: {
             type: "object",
             properties: {
               tool_name: {
                 type: "string",
-                description: "Exact tool name from the available tools list.",
+                description: "Exact Automaton tool name.",
               },
-              arguments: {
-                type: "object",
-                description: "JSON object containing the selected tool's arguments.",
-                additionalProperties: true,
+              arguments_json: {
+                type: "string",
+                description: "JSON string containing the target tool arguments.",
               },
             },
-            required: ["tool_name", "arguments"],
+            required: ["tool_name", "arguments_json"],
           },
         },
       },
@@ -3393,40 +3374,37 @@ export async function executeTool(
   // keep tool schemas under the provider's free-tier token-per-minute limit.
   // Dispatch still resolves against the complete original tool registry, so
   // no underlying capability is removed.
-  if (process.env.RITTY_MODE === "sovereign" && toolName === "list_available_tools") {
-    const query = typeof args.query === "string" ? args.query.toLowerCase().trim() : "";
-    const requestedLimit = Number(args.limit ?? 8);
-    const limit = Math.max(1, Math.min(12, Number.isFinite(requestedLimit) ? requestedLimit : 8));
-    const matches = tools
-      .filter((t) => {
-        if (!query) return true;
-        const haystack = `${t.name} ${t.description} ${t.category}`.toLowerCase();
-        return haystack.includes(query);
-      })
-      .slice(0, limit)
-      .map((t) => ({
-        name: t.name,
-        category: t.category,
-        riskLevel: t.riskLevel,
-        description: t.description,
-        parameters: compactToolSchema(t.parameters as Record<string, unknown>),
-      }));
-    return {
-      id: ulid(),
-      name: toolName,
-      arguments: args,
-      result: JSON.stringify(matches),
-      durationMs: Date.now() - startTime,
-    };
-  }
-
   if (process.env.RITTY_MODE === "sovereign" && toolName === "invoke_tool") {
     const targetName = typeof args.tool_name === "string" ? args.tool_name : "";
-    const targetArgs =
-      args.arguments && typeof args.arguments === "object" && !Array.isArray(args.arguments)
-        ? (args.arguments as Record<string, unknown>)
-        : {};
-    if (!targetName || targetName === "invoke_tool" || targetName === "list_available_tools") {
+    const rawTargetArgs = args.arguments_json;
+    let targetArgs: Record<string, unknown> = {};
+    try {
+      if (typeof rawTargetArgs === "string" && rawTargetArgs.trim()) {
+        const parsed = JSON.parse(rawTargetArgs);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          targetArgs = parsed as Record<string, unknown>;
+        } else {
+          throw new Error("arguments_json must decode to a JSON object");
+        }
+      } else if (rawTargetArgs && typeof rawTargetArgs === "object" && !Array.isArray(rawTargetArgs)) {
+        targetArgs = rawTargetArgs as Record<string, unknown>;
+      } else if (rawTargetArgs === undefined) {
+        targetArgs = {};
+      } else {
+        throw new Error("arguments_json must be a JSON object string");
+      }
+    } catch (error) {
+      return {
+        id: ulid(),
+        name: toolName,
+        arguments: args,
+        result: "",
+        durationMs: Date.now() - startTime,
+        error: `Invalid arguments_json: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+
+    if (!targetName || targetName === "invoke_tool") {
       return {
         id: ulid(),
         name: toolName,
@@ -3436,6 +3414,7 @@ export async function executeTool(
         error: "Invalid or recursive tool invocation.",
       };
     }
+
     const delegated = await executeTool(
       targetName,
       targetArgs,
