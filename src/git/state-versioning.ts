@@ -55,9 +55,11 @@ logs/
 
   await conway.writeFile(`${dir}/.gitignore`, gitignore);
 
-  // Configure git user
+  // Configure git user and mark the runtime state repository as safe.
+  // Railway can reuse a filesystem owned by a different UID; Git may then
+  // refuse the initial commit even though the repository itself is valid.
   await conway.exec(
-    `cd ${dir} && git config user.name "Automaton" && git config user.email "automaton@conway.tech"`,
+    `cd ${dir} && git config --local user.name "Automaton" && git config --local user.email "automaton@conway.tech" && git config --global --add safe.directory "${dir}" && rm -f .git/index.lock .git/config.lock .git/HEAD.lock`,
     5000,
   );
 
