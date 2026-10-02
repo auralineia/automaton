@@ -11,9 +11,10 @@ import fs from "fs";
 import path from "path";
 import { getWallet, getAutomatonDir } from "./identity/wallet.js";
 import { provision, loadApiKeyFromConfig } from "./identity/provision.js";
-import { loadConfig, resolvePath } from "./config.js";
+import { loadConfig, saveConfig, resolvePath } from "./config.js";
 import { createDatabase } from "./state/database.js";
 import { createConwayClient } from "./conway/client.js";
+import { createSovereignClient } from "./conway/sovereign-client.js";
 import { createInferenceClient } from "./conway/inference.js";
 import { createHeartbeatDaemon } from "./heartbeat/daemon.js";
 import {
@@ -184,20 +185,63 @@ Version:    ${config.version}
 // ─── Main Run ──────────────────────────────────────────────────
 
 async function run(): Promise<void> {
-  logger.info(`[${new Date().toISOString()}] Conway Automaton v${VERSION} starting...`);
+  const sovereignMode =
+    process.env.RITTY_MODE === "sovereign" ||
+    (!process.env.CONWAY_API_KEY && !!process.env.GROQ_API_KEY);
 
-  // Load config — first run triggers interactive setup wizard
+  if (sovereignMode) {
+    process.env.RITTY_MODE = "sovereign";
+    logger.info(`[${new Date().toISOString()}] RITTY sovereign runtime enabled — Conway is not required.`);
+  } else {
+    logger.info(`[${new Date().toISOString()}] Conway Automaton v${VERSION} starting...`);
+  }
+
+  // On Railway, boot non-interactively with Groq when Conway is unavailable.
   let config = loadConfig();
+  if (!config && sovereignMode) {
+    const walletPreview = await getWallet();
+    const creatorAddress =
+      process.env.RITTY_CREATOR_ADDRESS || walletPreview.chainIdentity.address;
+    config = {
+      name: process.env.RITTY_NAME || "RITTY",
+      genesisPrompt:
+        process.env.RITTY_GENESIS_PROMPT ||
+        "You are RITTY, an autonomous sovereign AI agent. Preserve your operational integrity, learn continuously, execute useful work, and improve your capabilities while respecting your safety and treasury policies.",
+      creatorMessage: process.env.RITTY_CREATOR_MESSAGE || "RITTY sovereign runtime",
+      creatorAddress,
+      registeredWithConway: false,
+      sandboxId: "local-root",
+      conwayApiUrl: "local://sovereign",
+      conwayApiKey: "",
+      inferenceModel: process.env.RITTY_MODEL || "llama-3.3-70b-versatile",
+      maxTokensPerTurn: Number(process.env.RITTY_MAX_TOKENS || 8192),
+      heartbeatConfigPath: "~/.automaton/heartbeat.yml",
+      dbPath: "~/.automaton/state.db",
+      logLevel: "info",
+      walletAddress: walletPreview.chainIdentity.address,
+      version: VERSION,
+      skillsDir: "~/.automaton/skills",
+      maxChildren: 3,
+      maxTurnsPerCycle: 25,
+      chainType: walletPreview.chainType,
+      treasuryPolicy: DEFAULT_TREASURY_POLICY,
+    };
+    saveConfig(config);
+    logger.info(`[${new Date().toISOString()}] Created non-interactive RITTY config.`);
+  }
+
   if (!config) {
     const { runSetupWizard } = await import("./setup/wizard.js");
     config = await runSetupWizard();
   }
 
   // Load wallet (chain-aware)
-  const { account, chainIdentity, chainType: walletChainType } = await getWallet();
+  const { account, chainIdentity, chainType: walletChainType } = await getWallet(
+    config.chainType,
+  );
   const resolvedChainType = config.chainType || walletChainType || "evm";
-  const apiKey = config.conwayApiKey || loadApiKeyFromConfig();
-  if (!apiKey) {
+  const apiKey = sovereignMode ? "local" : (config.conwayApiKey || loadApiKeyFromConfig());
+  if (!sovereignMode && !apiKey) {
     logger.error("No API key found. Run: automaton --provision");
     process.exit(1);
   }
@@ -238,12 +282,14 @@ async function run(): Promise<void> {
     db.setIdentity("automatonId", automatonId);
   }
 
-  // Create Conway client
-  const conway = createConwayClient({
-    apiUrl: config.conwayApiUrl,
-    apiKey,
-    sandboxId: config.sandboxId,
-  });
+  // Create a Conway-compatible client. Sovereign mode is entirely local.
+  const conway = sovereignMode
+    ? createSovereignClient(config.sandboxId)
+    : createConwayClient({
+        apiUrl: config.conwayApiUrl,
+        apiKey,
+        sandboxId: config.sandboxId,
+      });
 
   // Register automaton identity (one-time, immutable)
   const registrationState = db.getIdentity("conwayRegistrationStatus");
@@ -303,7 +349,7 @@ async function run(): Promise<void> {
 
   // Create social client (chain-aware: pass ChainIdentity for Solana signing)
   let social: SocialClientInterface | undefined;
-  if (config.socialRelayUrl) {
+  if (!sovereignMode && config.socialRelayUrl) {
     social = createSocialClient(config.socialRelayUrl, resolvedChainType === "solana" ? chainIdentity : account);
     logger.info(`[${new Date().toISOString()}] Social relay: ${config.socialRelayUrl}`);
   }
@@ -337,9 +383,11 @@ async function run(): Promise<void> {
     logger.warn(`[${new Date().toISOString()}] State repo init failed: ${err.message}`);
   }
 
-  // Bootstrap topup: buy minimum credits ($5) from USDC so the agent can start.
-  // The agent decides larger topups itself via the topup_credits tool.
-  try {
+  // Conway credit purchases are intentionally skipped in sovereign mode.
+  if (!sovereignMode) {
+    // Bootstrap topup: buy minimum credits ($5) from USDC so the agent can start.
+    // The agent decides larger topups itself via the topup_credits tool.
+    try {
     let bootstrapTimer: ReturnType<typeof setTimeout>;
     const bootstrapTimeout = new Promise<null>((_, reject) => {
       bootstrapTimer = setTimeout(() => reject(new Error("bootstrap topup timed out")), 15_000);
@@ -365,8 +413,9 @@ async function run(): Promise<void> {
     } finally {
       clearTimeout(bootstrapTimer!);
     }
-  } catch (err: any) {
-    logger.warn(`[${new Date().toISOString()}] Bootstrap topup skipped: ${err.message}`);
+    } catch (err: any) {
+      logger.warn(`[${new Date().toISOString()}] Bootstrap topup skipped: ${err.message}`);
+    }
   }
 
   // Start heartbeat daemon (Phase 1.1: DurableScheduler)
