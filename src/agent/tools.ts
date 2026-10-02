@@ -3313,7 +3313,6 @@ export function toolsToInferenceFormat(
   tools: AutomatonTool[],
 ): InferenceToolDefinition[] {
   if (process.env.RITTY_MODE === "sovereign") {
-    const names = sovereignToolIndex(tools);
     return [
       {
         type: "function" as const,
@@ -3341,9 +3340,7 @@ export function toolsToInferenceFormat(
         function: {
           name: "invoke_tool",
           description:
-            "Invoke any Automaton tool by exact name. Available tool names: " +
-            names +
-            ". Use list_available_tools first when you need argument details.",
+            "Invoke any Automaton tool by exact name. Use list_available_tools first to discover the exact name and compact arguments.",
           parameters: {
             type: "object",
             properties: {
