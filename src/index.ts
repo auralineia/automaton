@@ -255,6 +255,15 @@ async function run(): Promise<void> {
         ? requestedSovereignModel
         : "llama-3.3-70b-versatile";
 
+    // Normalize every persisted strategy field so the inference router
+    // cannot revive stale Conway/OpenAI models such as gpt-5.2.
+    config.modelStrategy = {
+      ...(config.modelStrategy ?? {}),
+      inferenceModel: config.inferenceModel,
+      lowComputeModel: "llama-3.1-8b-instant",
+      criticalModel: "llama-3.1-8b-instant",
+    };
+
     saveConfig(config);
   }
 
