@@ -49,7 +49,7 @@ export const TASK_TIMEOUTS: Record<string, number> = {
 
 export const STATIC_MODEL_BASELINE: Omit<ModelEntry, "lastSeen" | "createdAt" | "updatedAt">[] = [
   {
-    modelId: "llama-3.3-70b-versatile",
+    modelId: "openai/gpt-oss-120b",
     provider: "groq",
     displayName: "Llama 3.3 70B Versatile (Groq)",
     tierMinimum: "normal",
@@ -63,7 +63,7 @@ export const STATIC_MODEL_BASELINE: Omit<ModelEntry, "lastSeen" | "createdAt" | 
     enabled: true,
   },
   {
-    modelId: "llama-3.1-8b-instant",
+    modelId: "openai/gpt-oss-20b",
     provider: "groq",
     displayName: "Llama 3.1 8B Instant (Groq)",
     tierMinimum: "low_compute",
