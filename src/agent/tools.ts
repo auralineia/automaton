@@ -3313,17 +3313,19 @@ export function toolsToInferenceFormat(
   tools: AutomatonTool[],
 ): InferenceToolDefinition[] {
   if (process.env.RITTY_MODE === "sovereign") {
-    const names = tools.map((t) => t.name).join(", ");
+    const names = tools
+      .filter((t) => t.name !== "invoke_tool")
+      .map((t) => t.name)
+      .join(", ");
     return [
       {
         type: "function" as const,
         function: {
           name: "invoke_tool",
           description:
-            "Invoke one Automaton tool by exact name. Put the target tool arguments directly in the arguments object. " +
-            "For exec use {\"command\":\"...\",\"timeout\":30000}; never use cmd arrays. " +
-            "For write_file use {\"path\":\"...\",\"content\":\"...\"}. " +
-            "For no-argument tools use {}.",
+            `Invoke one Automaton tool by exact name. Choose the concrete target tool in tool_name — never set tool_name to "invoke_tool". Valid targets: ${names}. ` +
+            `Put the target tool arguments directly in arguments. For exec use {"command":"...","timeout":30000}; never use cmd arrays. ` +
+            `For write_file use {"path":"...","content":"..."}. For no-argument tools use {}.`,
           parameters: {
             type: "object",
             additionalProperties: false,
@@ -3418,7 +3420,8 @@ export async function executeTool(
         arguments: args,
         result: "",
         durationMs: Date.now() - startTime,
-        error: "Invalid or recursive tool invocation.",
+        error:
+          'Invalid or recursive tool invocation: choose a concrete target tool name; "invoke_tool" cannot be used as the target.',
       };
     }
 
