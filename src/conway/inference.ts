@@ -180,51 +180,46 @@ export function createInferenceClient(
     } catch (error) {
       let lastGroqError: unknown = error;
 
-      if (isSovereignGroq && isGroqTpmError(error)) {
-        const emergencyBody = {
-          ...body,
-          max_completion_tokens: 128,
-          messages: compactSovereignGroqMessages(messages, true).map(formatMessage),
-        };
-
-        try {
-          return await chatViaOpenAiCompatible({
-            model,
-            body: emergencyBody,
-            apiUrl: openAiLikeApiUrl,
-            apiKey: openAiLikeApiKey,
-            backend,
-            httpClient,
-            retries: 0,
-          });
-        } catch (emergencyError) {
-          lastGroqError = emergencyError;
-        }
-      }
-
-      // Groq remains primary. On a temporary Groq failure, use Gemini as the
-      // emergency backend. The next turn will try Groq again automatically.
+      // Groq remains primary. When sovereign Groq fails (including quota/rate
+      // limits), fail over immediately through a small Gemini model chain.
+      // We deliberately do not retry the quota-limited Groq request here.
       if (backend === "groq" && geminiApiKey) {
-        const geminiModel = process.env.RITTY_GEMINI_MODEL || "gemini-3.8-flash";
-        const geminiBody: Record<string, unknown> = {
-          ...body,
-          model: geminiModel,
-        };
+        const configuredGemini = process.env.RITTY_GEMINI_MODEL || "gemini-3.7-flash";
+        const geminiCandidates = Array.from(new Set([
+          configuredGemini,
+          "gemini-3.6-flash",
+          "gemini-2.5-flash",
+        ]));
 
-        if ("max_completion_tokens" in geminiBody) {
-          geminiBody.max_tokens = geminiBody.max_completion_tokens;
-          delete geminiBody.max_completion_tokens;
+        let lastGeminiError: unknown = undefined;
+        for (const geminiModel of geminiCandidates) {
+          const geminiBody: Record<string, unknown> = {
+            ...body,
+            model: geminiModel,
+          };
+
+          if ("max_completion_tokens" in geminiBody) {
+            geminiBody.max_tokens = geminiBody.max_completion_tokens;
+            delete geminiBody.max_completion_tokens;
+          }
+
+          try {
+            return await chatViaOpenAiCompatible({
+              model: geminiModel,
+              body: geminiBody,
+              apiUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+              apiKey: geminiApiKey,
+              backend: "gemini",
+              httpClient,
+              retries: 0,
+              timeoutMs: 15_000,
+            });
+          } catch (geminiError) {
+            lastGeminiError = geminiError;
+          }
         }
 
-        return chatViaOpenAiCompatible({
-          model: geminiModel,
-          body: geminiBody,
-          apiUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
-          apiKey: geminiApiKey,
-          backend: "gemini",
-          httpClient,
-          retries: 0,
-        });
+        throw lastGeminiError || lastGroqError;
       }
 
       throw lastGroqError;
@@ -322,6 +317,7 @@ async function chatViaOpenAiCompatible(params: {
   backend: "conway" | "openai" | "groq" | "gemini" | "ollama";
   httpClient: ResilientHttpClient;
   retries?: number;
+  timeoutMs?: number;
 }): Promise<InferenceResponse> {
   const endpoint =
     params.backend === "gemini"
@@ -343,6 +339,7 @@ async function chatViaOpenAiCompatible(params: {
     body: JSON.stringify(params.body),
     timeout: INFERENCE_TIMEOUT_MS,
     ...(params.retries !== undefined ? { retries: params.retries } : {}),
+    ...(params.timeoutMs !== undefined ? { timeout: params.timeoutMs } : {}),
   });
 
   if (!resp.ok) {
