@@ -213,7 +213,14 @@ export async function gitInit(
     `cd ${escapeShellArg(repoPath)} && git init 2>&1`,
     10000,
   );
-  return result.stdout || "Git initialized";
+
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Git init failed: ${result.stderr || result.stdout || "git init exited with a non-zero status"}`,
+    );
+  }
+
+  return result.stdout || "Git initialized"; 
 }
 
 function escapeShellArg(arg: string): string {
