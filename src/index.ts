@@ -36,6 +36,7 @@ import { DEFAULT_MODEL_STRATEGY_CONFIG, DEFAULT_TREASURY_POLICY } from "./types.
 import { createLogger, setGlobalLogLevel, StructuredLogger } from "./observability/logger.js";
 import { prettySink } from "./observability/pretty-sink.js";
 import { bootstrapTopup } from "./conway/topup.js";
+import { startDashboardServer } from "./dashboard/server.js";
 import { randomUUID } from "crypto";
 import { keccak256, toHex } from "viem";
 
@@ -153,6 +154,7 @@ async function showStatus(): Promise<void> {
 
   const dbPath = resolvePath(config.dbPath);
   const db = createDatabase(dbPath);
+  startDashboardServer({ db, config });
 
   const state = db.getAgentState();
   const turnCount = db.getTurnCount();
