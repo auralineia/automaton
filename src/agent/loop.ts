@@ -983,12 +983,18 @@ async function getFinancialState(
     };
   }
 
-  try {
-    const network = chainType === "solana" ? "solana:mainnet" : "eip155:8453";
-    usdcBalance = await getUsdcBalance(address, network, chainType as any);
-    if (usdcBalance > 0) _lastKnownUsdc = usdcBalance;
-  } catch (error) {
-    logger.error("USDC balance fetch failed", error instanceof Error ? error : undefined);
+  if (process.env.RITTY_MODE === "sovereign") {
+    // Sovereign mode has no Conway/x402 treasury dependency. Keep the
+    // operational balance metric local and avoid unnecessary RPC calls.
+    usdcBalance = 0;
+  } else {
+    try {
+      const network = chainType === "solana" ? "solana:mainnet" : "eip155:8453";
+      usdcBalance = await getUsdcBalance(address, network, chainType as any);
+      if (usdcBalance > 0) _lastKnownUsdc = usdcBalance;
+    } catch (error) {
+      logger.error("USDC balance fetch failed", error instanceof Error ? error : undefined);
+    }
   }
 
   // Cache successful balance reads
