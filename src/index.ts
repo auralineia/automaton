@@ -31,7 +31,7 @@ import { PolicyEngine } from "./agent/policy-engine.js";
 import { SpendTracker } from "./agent/spend-tracker.js";
 import { createDefaultRules } from "./agent/policy-rules/index.js";
 import type { AutomatonIdentity, AgentState, Skill, SocialClientInterface } from "./types.js";
-import { DEFAULT_TREASURY_POLICY } from "./types.js";
+import { DEFAULT_MODEL_STRATEGY_CONFIG, DEFAULT_TREASURY_POLICY } from "./types.js";
 import { createLogger, setGlobalLogLevel, StructuredLogger } from "./observability/logger.js";
 import { prettySink } from "./observability/pretty-sink.js";
 import { bootstrapTopup } from "./conway/topup.js";
@@ -258,6 +258,7 @@ async function run(): Promise<void> {
     // Normalize every persisted strategy field so the inference router
     // cannot revive stale Conway/OpenAI models such as gpt-5.2.
     config.modelStrategy = {
+      ...DEFAULT_MODEL_STRATEGY_CONFIG,
       ...(config.modelStrategy ?? {}),
       inferenceModel: config.inferenceModel,
       lowComputeModel: "llama-3.1-8b-instant",
