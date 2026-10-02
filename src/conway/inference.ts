@@ -15,7 +15,7 @@ import type {
   InferenceToolDefinition,
 } from "../types.js";
 import { ResilientHttpClient } from "./http-client.js";
-import { compactSovereignGroqMessages, isGroqTpmError, SOVEREIGN_GROQ_MAX_OUTPUT_TOKENS } from "./groq-context.js";
+import { compactSovereignGroqMessages, SOVEREIGN_GROQ_MAX_OUTPUT_TOKENS } from "./groq-context.js";
 
 const INFERENCE_TIMEOUT_MS = 30_000;
 const SOVEREIGN_PROVIDER_RETRIES = 0;
