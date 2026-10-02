@@ -71,6 +71,25 @@ const MAX_TOOL_CALLS_PER_TURN = 10;
 const MAX_CONSECUTIVE_ERRORS = 5;
 const MAX_REPETITIVE_TURNS = 3;
 
+/**
+ * Sovereign mode wraps every underlying tool call in the generic
+ * "invoke_tool" function. Loop/idle/sleep detection must reason about the
+ * actual target tool, not the wrapper name.
+ */
+function getObservedToolName(call: ToolCallResult): string {
+  if (call.name !== "invoke_tool") return call.name;
+
+  const args = call.arguments;
+  if (args && typeof args === "object" && !Array.isArray(args)) {
+    const target = (args as Record<string, unknown>).tool_name;
+    if (typeof target === "string" && target.trim()) {
+      return target.trim();
+    }
+  }
+
+  return call.name;
+}
+
 export interface AgentLoopOptions {
   identity: AutomatonIdentity;
   config: AutomatonConfig;
@@ -495,7 +514,7 @@ export async function runAgentLoop(
       const allTurns = db.getRecentTurns(20);
       const meaningfulTurns = allTurns.filter((t) => {
         if (t.toolCalls.length === 0) return true; // text-only turns are meaningful
-        return t.toolCalls.some((tc) => !isIdleOnlyTool(tc.name));
+        return t.toolCalls.some((tc) => !isIdleOnlyTool(getObservedToolName(tc)));
       });
       // Keep at least the last 2 turns for continuity, even if idle
       const recentTurns = trimContext(
@@ -724,7 +743,7 @@ export async function runAgentLoop(
       // Force sleep immediately on first BLOCKED (not second) with exponential
       // backoff so the agent doesn't wake every 2 minutes just to get BLOCKED again.
       const blockedGoalCall = turn.toolCalls.find(
-        (tc) => tc.name === "create_goal" && tc.result?.includes("BLOCKED"),
+        (tc) => getObservedToolName(tc) === "create_goal" && tc.result?.includes("BLOCKED"),
       );
       if (blockedGoalCall) {
         // Exponential backoff: 2min → 4min → 8min → cap at 10min
@@ -740,7 +759,7 @@ export async function runAgentLoop(
         onStateChange?.("sleeping");
         running = false;
         break;
-      } else if (turn.toolCalls.some((tc) => tc.name === "create_goal" && !tc.error)) {
+      } else if (turn.toolCalls.some((tc) => getObservedToolName(tc) === "create_goal" && !tc.error)) {
         // Goal was successfully created — reset backoff
         db.deleteKV("blocked_goal_backoff");
       }
@@ -748,7 +767,7 @@ export async function runAgentLoop(
       // ── Loop Detection ──
       if (turn.toolCalls.length > 0) {
         const currentPattern = turn.toolCalls
-          .map((tc) => tc.name)
+          .map((tc) => getObservedToolName(tc))
           .sort()
           .join(",");
         lastToolPatterns.push(currentPattern);
@@ -805,7 +824,7 @@ export async function runAgentLoop(
 
         // Detect multi-tool maintenance loops: all tools in the turn are idle-only,
         // even if the specific combination varies across consecutive turns.
-        const isAllIdleTools = turn.toolCalls.every((tc) => isIdleOnlyTool(tc.name));
+        const isAllIdleTools = turn.toolCalls.every((tc) => isIdleOnlyTool(getObservedToolName(tc)));
         if (isAllIdleTools) {
           idleToolTurns++;
           if (idleToolTurns >= MAX_REPETITIVE_TURNS && !pendingInput) {
@@ -813,7 +832,7 @@ export async function runAgentLoop(
             pendingInput = {
               content:
                 `MAINTENANCE LOOP DETECTED: Your last ${idleToolTurns} turns only used status-check tools ` +
-                `(${turn.toolCalls.map((tc) => tc.name).join(", ")}). ` +
+                `(${turn.toolCalls.map((tc) => getObservedToolName(tc)).join(", ")}). ` +
                 `You already know your status. Review your genesis prompt and SOUL.md, then execute a CONCRETE task. ` +
                 `Write code, create a file, register a service, or build something new.`,
               source: "system",
@@ -831,7 +850,7 @@ export async function runAgentLoop(
       }
 
       // ── Check for sleep command ──
-      const sleepTool = turn.toolCalls.find((tc) => tc.name === "sleep");
+      const sleepTool = turn.toolCalls.find((tc) => getObservedToolName(tc) === "sleep");
       if (sleepTool && !sleepTool.error) {
         log(config, "[SLEEP] Agent chose to sleep.");
         db.setAgentState("sleeping");
@@ -859,7 +878,7 @@ export async function runAgentLoop(
         "save_procedure", "note_about_agent", "forget",
         "enter_low_compute", "switch_model", "review_upstream_changes",
       ]);
-      const didMutate = turn.toolCalls.some((tc) => MUTATING_TOOLS.has(tc.name));
+      const didMutate = turn.toolCalls.some((tc) => MUTATING_TOOLS.has(getObservedToolName(tc)));
 
       if (!currentInput && !didMutate) {
         idleTurnCount++;
