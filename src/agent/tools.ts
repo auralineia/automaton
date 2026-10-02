@@ -3320,9 +3320,10 @@ export function toolsToInferenceFormat(
         function: {
           name: "invoke_tool",
           description:
-            "Invoke one Automaton tool by exact name. Available tools: " +
-            names +
-            ". Put the target tool arguments directly in the arguments object. For no arguments use {}.",
+            "Invoke one Automaton tool by exact name. Put the target tool arguments directly in the arguments object. " +
+            "For exec use {\"command\":\"...\",\"timeout\":30000}; never use cmd arrays. " +
+            "For write_file use {\"path\":\"...\",\"content\":\"...\"}. " +
+            "For no-argument tools use {}.",
           parameters: {
             type: "object",
             additionalProperties: false,
