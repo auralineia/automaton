@@ -76,7 +76,8 @@ export function createInferenceClient(
     // Newer models (o-series, gpt-5.x, gpt-4.1) require max_completion_tokens.
     // Ollama always uses max_tokens.
     const usesCompletionTokens =
-      backend !== "ollama" && /^(o[1-9]|gpt-5|gpt-4\.1)/.test(model);
+      backend === "groq" ||
+      (backend !== "ollama" && /^(o[1-9]|gpt-5|gpt-4\.1)/.test(model));
     const tokenLimit = opts?.maxTokens || maxTokens;
 
     const body: Record<string, unknown> = {
