@@ -241,7 +241,20 @@ async function run(): Promise<void> {
     config.conwayApiUrl = "local://sovereign";
     config.conwayApiKey = "";
     config.sandboxId = config.sandboxId || "local-root";
-    config.inferenceModel = process.env.RITTY_MODEL || "llama-3.3-70b-versatile";
+
+    // Only allow models known by the sovereign Groq provider. This prevents
+    // an old RITTY_MODEL or persisted Conway model (for example gpt-5.2)
+    // from being sent to Groq.
+    const requestedSovereignModel = process.env.RITTY_MODEL;
+    const allowedSovereignModels = new Set([
+      "llama-3.3-70b-versatile",
+      "llama-3.1-8b-instant",
+    ]);
+    config.inferenceModel =
+      requestedSovereignModel && allowedSovereignModels.has(requestedSovereignModel)
+        ? requestedSovereignModel
+        : "llama-3.3-70b-versatile";
+
     saveConfig(config);
   }
 
