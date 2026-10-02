@@ -250,7 +250,10 @@ async function run(): Promise<void> {
     config.chainType,
   );
   const resolvedChainType = config.chainType || walletChainType || "evm";
-  const apiKey = sovereignMode ? "local" : (config.conwayApiKey || loadApiKeyFromConfig());
+  const apiKey: string =
+    sovereignMode
+      ? "local"
+      : (config.conwayApiKey || loadApiKeyFromConfig() || "");
   if (!sovereignMode && !apiKey) {
     logger.error("No API key found. Run: automaton --provision");
     process.exit(1);
