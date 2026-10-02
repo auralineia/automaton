@@ -235,6 +235,16 @@ async function run(): Promise<void> {
     config = await runSetupWizard();
   }
 
+  if (sovereignMode) {
+    // Keep an existing persisted Conway config from reintroducing Conway
+    // dependencies when RITTY is running on the sovereign backend.
+    config.conwayApiUrl = "local://sovereign";
+    config.conwayApiKey = "";
+    config.sandboxId = config.sandboxId || "local-root";
+    config.inferenceModel = process.env.RITTY_MODEL || "llama-3.3-70b-versatile";
+    saveConfig(config);
+  }
+
   // Load wallet (chain-aware)
   const { account, chainIdentity, chainType: walletChainType } = await getWallet(
     config.chainType,
@@ -335,7 +345,10 @@ async function run(): Promise<void> {
     apiKey,
     defaultModel: config.inferenceModel,
     maxTokens: config.maxTokensPerTurn,
-    lowComputeModel: config.modelStrategy?.lowComputeModel || "gpt-5-mini",
+    lowComputeModel:
+      config.modelStrategy?.lowComputeModel ||
+      process.env.RITTY_LOW_COMPUTE_MODEL ||
+      (sovereignMode ? "llama-3.1-8b-instant" : "gpt-5-mini"),
     openaiApiKey: config.openaiApiKey,
     groqApiKey: process.env.GROQ_API_KEY,
     anthropicApiKey: config.anthropicApiKey,
