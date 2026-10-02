@@ -3273,9 +3273,97 @@ function createInstalledToolExecutor(tool: {
 /**
  * Convert AutomatonTool list to OpenAI-compatible tool definitions.
  */
+function compactToolSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const compact: Record<string, unknown> = {};
+  if (typeof schema.type === "string") compact.type = schema.type;
+  if (Array.isArray(schema.required)) compact.required = schema.required;
+  if (schema.additionalProperties !== undefined) compact.additionalProperties = schema.additionalProperties;
+  if (schema.enum) compact.enum = schema.enum;
+
+  const properties = schema.properties;
+  if (properties && typeof properties === "object" && !Array.isArray(properties)) {
+    const compactProperties: Record<string, unknown> = {};
+    for (const [name, raw] of Object.entries(properties as Record<string, unknown>)) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        compactProperties[name] = raw;
+        continue;
+      }
+      const p = raw as Record<string, unknown>;
+      const cp: Record<string, unknown> = {};
+      if (typeof p.type === "string") cp.type = p.type;
+      if (p.enum) cp.enum = p.enum;
+      if (p.items && typeof p.items === "object" && !Array.isArray(p.items)) {
+        cp.items = compactToolSchema(p.items as Record<string, unknown>);
+      }
+      if (p.properties && typeof p.properties === "object" && !Array.isArray(p.properties)) {
+        cp.properties = compactToolSchema(p);
+      }
+      compactProperties[name] = cp;
+    }
+    compact.properties = compactProperties;
+  }
+  return compact;
+}
+
+function sovereignToolIndex(tools: AutomatonTool[]): string {
+  return tools.map((t) => t.name).join(", ");
+}
+
 export function toolsToInferenceFormat(
   tools: AutomatonTool[],
 ): InferenceToolDefinition[] {
+  if (process.env.RITTY_MODE === "sovereign") {
+    const names = sovereignToolIndex(tools);
+    return [
+      {
+        type: "function" as const,
+        function: {
+          name: "list_available_tools",
+          description:
+            "List available Automaton tools. Use query to find a capability and receive compact parameter schemas before calling invoke_tool.",
+          parameters: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "Optional keyword to filter tool names/descriptions.",
+              },
+              limit: {
+                type: "number",
+                description: "Maximum results (1-12). Default 8.",
+              },
+            },
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "invoke_tool",
+          description:
+            "Invoke any Automaton tool by exact name. Available tool names: " +
+            names +
+            ". Use list_available_tools first when you need argument details.",
+          parameters: {
+            type: "object",
+            properties: {
+              tool_name: {
+                type: "string",
+                description: "Exact tool name from the available tools list.",
+              },
+              arguments: {
+                type: "object",
+                description: "JSON object containing the selected tool's arguments.",
+                additionalProperties: true,
+              },
+            },
+            required: ["tool_name", "arguments"],
+          },
+        },
+      },
+    ];
+  }
+
   return tools.map((t) => ({
     type: "function" as const,
     function: {
@@ -3302,8 +3390,74 @@ export async function executeTool(
     sessionSpend: SpendTrackerInterface;
   },
 ): Promise<ToolCallResult> {
-  const tool = tools.find((t) => t.name === toolName);
   const startTime = Date.now();
+
+  // Sovereign mode exposes a compact generic function surface to Groq to
+  // keep tool schemas under the provider's free-tier token-per-minute limit.
+  // Dispatch still resolves against the complete original tool registry, so
+  // no underlying capability is removed.
+  if (process.env.RITTY_MODE === "sovereign" && toolName === "list_available_tools") {
+    const query = typeof args.query === "string" ? args.query.toLowerCase().trim() : "";
+    const requestedLimit = Number(args.limit ?? 8);
+    const limit = Math.max(1, Math.min(12, Number.isFinite(requestedLimit) ? requestedLimit : 8));
+    const matches = tools
+      .filter((t) => {
+        if (!query) return true;
+        const haystack = `${t.name} ${t.description} ${t.category}`.toLowerCase();
+        return haystack.includes(query);
+      })
+      .slice(0, limit)
+      .map((t) => ({
+        name: t.name,
+        category: t.category,
+        riskLevel: t.riskLevel,
+        description: t.description,
+        parameters: compactToolSchema(t.parameters as Record<string, unknown>),
+      }));
+    return {
+      id: ulid(),
+      name: toolName,
+      arguments: args,
+      result: JSON.stringify(matches),
+      durationMs: Date.now() - startTime,
+    };
+  }
+
+  if (process.env.RITTY_MODE === "sovereign" && toolName === "invoke_tool") {
+    const targetName = typeof args.tool_name === "string" ? args.tool_name : "";
+    const targetArgs =
+      args.arguments && typeof args.arguments === "object" && !Array.isArray(args.arguments)
+        ? (args.arguments as Record<string, unknown>)
+        : {};
+    if (!targetName || targetName === "invoke_tool" || targetName === "list_available_tools") {
+      return {
+        id: ulid(),
+        name: toolName,
+        arguments: args,
+        result: "",
+        durationMs: Date.now() - startTime,
+        error: "Invalid or recursive tool invocation.",
+      };
+    }
+    const delegated = await executeTool(
+      targetName,
+      targetArgs,
+      tools,
+      context,
+      policyEngine,
+      turnContext,
+    );
+    return {
+      id: ulid(),
+      name: toolName,
+      arguments: args,
+      result: delegated.error ? `[${delegated.name}] ERROR: ${delegated.error}` : delegated.result,
+      durationMs: Date.now() - startTime,
+      error: delegated.error,
+    };
+  }
+
+  const tool = tools.find((t) => t.name === toolName);
 
   if (!tool) {
     return {
