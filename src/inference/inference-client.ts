@@ -16,10 +16,10 @@ const CIRCUIT_BREAKER_DISABLE_MS = 5 * 60_000;
 // Keep a wide safety margin because provider-side token accounting includes
 // tool schemas and protocol overhead that our local estimate cannot see.
 const SOVEREIGN_GROQ_TPM_LIMIT = 8_000;
-const SOVEREIGN_GROQ_INPUT_BUDGET = 4_800;
-const SOVEREIGN_GROQ_DEFAULT_MAX_OUTPUT = 384;
-const SOVEREIGN_GROQ_SYSTEM_BUDGET = 3_200;
-const SOVEREIGN_GROQ_MEMORY_BUDGET = 300;
+const SOVEREIGN_GROQ_INPUT_BUDGET = 3_000;
+const SOVEREIGN_GROQ_DEFAULT_MAX_OUTPUT = 256;
+const SOVEREIGN_GROQ_SYSTEM_BUDGET = 1_800;
+const SOVEREIGN_GROQ_MEMORY_BUDGET = 200;
 
 
 export interface UnifiedInferenceResult {
