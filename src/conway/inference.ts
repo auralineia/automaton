@@ -16,9 +16,11 @@ import type {
 } from "../types.js";
 import { ResilientHttpClient } from "./http-client.js";
 import { compactSovereignGroqMessages, SOVEREIGN_GROQ_MAX_OUTPUT_TOKENS } from "./groq-context.js";
+import { createLogger } from "../observability/logger.js";
 
 const INFERENCE_TIMEOUT_MS = 30_000;
 const SOVEREIGN_PROVIDER_RETRIES = 0;
+const logger = createLogger("inference");
 
 interface InferenceClientOptions {
   apiUrl: string;
@@ -184,6 +186,11 @@ export function createInferenceClient(
       // limits), fail over immediately through a small Gemini model chain.
       // We deliberately do not retry the quota-limited Groq request here.
       if (backend === "groq" && geminiApiKey) {
+        const groqErrorMessage =
+          error instanceof Error ? error.message : String(error);
+        logger.warn(
+          `[SOVEREIGN] Groq inference failed; starting Gemini fallback: ${groqErrorMessage.slice(0, 500)}`,
+        );
         // Ignore stale/deprecated RITTY_GEMINI_MODEL values. Google currently
         // exposes Gemini 3.8/3.7/3.6/3.5 Flash for the API.
         const supportedGeminiModels = [
@@ -213,7 +220,7 @@ export function createInferenceClient(
           }
 
           try {
-            return await chatViaOpenAiCompatible({
+            const response = await chatViaOpenAiCompatible({
               model: geminiModel,
               body: geminiBody,
               apiUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -223,8 +230,17 @@ export function createInferenceClient(
               retries: 0,
               timeoutMs: 15_000,
             });
+            logger.info(
+              `[SOVEREIGN] Gemini fallback succeeded with ${geminiModel}`,
+            );
+            return response;
           } catch (geminiError) {
             lastGeminiError = geminiError;
+            const message =
+              geminiError instanceof Error ? geminiError.message : String(geminiError);
+            logger.warn(
+              `[SOVEREIGN] Gemini candidate ${geminiModel} failed: ${message.slice(0, 400)}`,
+            );
           }
         }
 
