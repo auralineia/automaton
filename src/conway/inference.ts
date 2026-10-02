@@ -188,6 +188,12 @@ function resolveInferenceBackend(
     getModelProvider?: (modelId: string) => string | undefined;
   },
 ): InferenceBackend {
+  // In sovereign RITTY mode, Conway registry records must never be allowed
+  // to route a Groq model back to the retired Conway endpoint.
+  if (process.env.RITTY_MODE === "sovereign" && keys.groqApiKey) {
+    return "groq";
+  }
+
   // Registry-based routing: most accurate, no name guessing
   if (keys.getModelProvider) {
     const provider = keys.getModelProvider(model);
