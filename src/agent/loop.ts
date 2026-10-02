@@ -589,6 +589,17 @@ export async function runAgentLoop(
         }
       }
 
+      if (process.env.RITTY_MODE === "sovereign") {
+        messages.push({
+          role: "system",
+          content:
+            "SOVEREIGN EXECUTION RULE: Do not repeatedly check credits or status. " +
+            "One credit check is enough unless a real decision requires a fresh balance. " +
+            "After a successful status check, execute ONE concrete useful task from your goals/genesis prompt, " +
+            "or sleep if there is genuinely no work. Do not call the same status tool on consecutive turns.",
+        });
+      }
+
       // Capture input before clearing
       const currentInput = pendingInput;
 
