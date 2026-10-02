@@ -3386,7 +3386,19 @@ export async function executeTool(
       typeof rawTargetArgs === "object" &&
       !Array.isArray(rawTargetArgs)
     ) {
-      targetArgs = rawTargetArgs as Record<string, unknown>;
+      targetArgs = { ...(rawTargetArgs as Record<string, unknown>) };
+      // Sovereign models sometimes emit common aliases for shell execution.
+      // Normalize them before dispatch so malformed-but-obvious calls do not
+      // reach the underlying executor with an undefined command.
+      if (targetName === "exec" && targetArgs.command === undefined && targetArgs.cmd !== undefined) {
+        const cmd = targetArgs.cmd;
+        if (typeof cmd === "string") {
+          targetArgs.command = cmd;
+        } else if (Array.isArray(cmd) && cmd.every((part) => typeof part === "string")) {
+          targetArgs.command = cmd.join(" ");
+        }
+        delete targetArgs.cmd;
+      }
     } else if (rawTargetArgs !== undefined) {
       return {
         id: ulid(),
