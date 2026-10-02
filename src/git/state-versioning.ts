@@ -59,7 +59,7 @@ logs/
   // Railway can reuse a filesystem owned by a different UID; Git may then
   // refuse the initial commit even though the repository itself is valid.
   await conway.exec(
-    `cd ${dir} && git config --local user.name "Automaton" && git config --local user.email "automaton@conway.tech" && git config --global --add safe.directory "${dir}" && rm -f .git/index.lock .git/config.lock .git/HEAD.lock`,
+    `git config --global --add safe.directory "${dir}" && cd ${dir} && git config --local user.name "Automaton" && git config --local user.email "automaton@conway.tech" && rm -f .git/index.lock .git/config.lock .git/HEAD.lock`,
     5000,
   );
 
