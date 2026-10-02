@@ -213,7 +213,7 @@ async function run(): Promise<void> {
       sandboxId: "local-root",
       conwayApiUrl: "local://sovereign",
       conwayApiKey: "",
-      inferenceModel: process.env.RITTY_MODEL || "llama-3.3-70b-versatile",
+      inferenceModel: process.env.RITTY_MODEL || "openai/gpt-oss-120b",
       maxTokensPerTurn: Number(process.env.RITTY_MAX_TOKENS || 8192),
       heartbeatConfigPath: "~/.automaton/heartbeat.yml",
       dbPath: "~/.automaton/state.db",
@@ -247,13 +247,13 @@ async function run(): Promise<void> {
     // from being sent to Groq.
     const requestedSovereignModel = process.env.RITTY_MODEL;
     const allowedSovereignModels = new Set([
-      "llama-3.3-70b-versatile",
-      "llama-3.1-8b-instant",
+      "openai/gpt-oss-120b",
+      "openai/gpt-oss-20b",
     ]);
     config.inferenceModel =
       requestedSovereignModel && allowedSovereignModels.has(requestedSovereignModel)
         ? requestedSovereignModel
-        : "llama-3.3-70b-versatile";
+        : "openai/gpt-oss-120b";
 
     // Normalize every persisted strategy field so the inference router
     // cannot revive stale Conway/OpenAI models such as gpt-5.2.
@@ -261,8 +261,8 @@ async function run(): Promise<void> {
       ...DEFAULT_MODEL_STRATEGY_CONFIG,
       ...(config.modelStrategy ?? {}),
       inferenceModel: config.inferenceModel,
-      lowComputeModel: "llama-3.1-8b-instant",
-      criticalModel: "llama-3.1-8b-instant",
+      lowComputeModel: "openai/gpt-oss-20b",
+      criticalModel: "openai/gpt-oss-20b",
     };
 
     saveConfig(config);
@@ -374,7 +374,7 @@ async function run(): Promise<void> {
     lowComputeModel:
       config.modelStrategy?.lowComputeModel ||
       process.env.RITTY_LOW_COMPUTE_MODEL ||
-      (sovereignMode ? "llama-3.1-8b-instant" : "gpt-5-mini"),
+      (sovereignMode ? "openai/gpt-oss-20b" : "gpt-5-mini"),
     openaiApiKey: config.openaiApiKey,
     groqApiKey: process.env.GROQ_API_KEY,
     anthropicApiKey: config.anthropicApiKey,
