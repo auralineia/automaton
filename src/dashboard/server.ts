@@ -114,7 +114,7 @@ filter:drop-shadow(0 0 35px rgba(86,240,208,.33));animation:breathe 4.8s ease-in
 <nav class="mobile-nav"><a class="active" href="#overview">Visão</a><a href="#activity">Atividade</a><a href="#skills">Skills</a><a href="#system">Sistema</a></nav>
 <script>
 const $ = (id)=>document.getElementById(id);
-const esc = (v)=>String(v??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;"}[c]));
+const esc = (v)=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 function fmtTime(v){if(!v)return"—";try{return new Date(v).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"})}catch{return v}}
 function fmtAge(v){if(!v)return"—";const s=Math.max(0,Math.floor((Date.now()-new Date(v).getTime())/1000));if(s<60)return`${s}s atrás`;if(s<3600)return`${Math.floor(s/60)}min atrás`;return`${Math.floor(s/3600)}h atrás`}
 function fmtUp(sec){if(sec==null)return"—";let s=Math.floor(sec);const d=Math.floor(s/86400);s%=86400;const h=Math.floor(s/3600);s%=3600;const m=Math.floor(s/60);return d?`${d}d ${h}h`:`${h}h ${m}m`}
