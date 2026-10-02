@@ -195,6 +195,37 @@ export class InferenceRouter {
     };
 
     const tierRank = TIER_ORDER[tier] ?? 0;
+    const strategy = this.budget.config;
+
+    // Sovereign RITTY mode must never fall back to a stale Conway model from
+    // the generic routing matrix. Prefer the configured sovereign Groq model.
+    if (process.env.RITTY_MODE === "sovereign") {
+      const sovereignIds = [
+        strategy.inferenceModel,
+        strategy.lowComputeModel,
+        strategy.criticalModel,
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
+      ];
+      for (const modelId of sovereignIds) {
+        if (!modelId) continue;
+        const entry = this.registry.get(modelId);
+        if (
+          entry &&
+          entry.enabled &&
+          entry.provider === "groq" &&
+          (entry.modelId === "openai/gpt-oss-120b" ||
+            entry.modelId === "openai/gpt-oss-20b")
+        ) {
+          return entry;
+        }
+      }
+
+      // Sovereign mode must never fall through to the generic Conway/OpenAI
+      // routing matrix. A null result is safer than sending an unsupported
+      // model ID to Groq.
+      return null;
+    }
 
     // 1. Try routing-matrix candidates
     const preference = this.getPreference(tier, taskType);
@@ -209,7 +240,6 @@ export class InferenceRouter {
 
     // 2. Fall back to user-configured models.
     //    This handles local/Ollama setups where routing-matrix models are absent.
-    const strategy = this.budget.config;
     const fallbackIds: (string | undefined)[] =
       tier === "critical" || tier === "dead"
         ? [strategy.criticalModel, strategy.inferenceModel, strategy.lowComputeModel]
