@@ -78,7 +78,14 @@ export function createInferenceClient(
     const usesCompletionTokens =
       backend === "groq" ||
       (backend !== "ollama" && /^(o[1-9]|gpt-5|gpt-4\.1)/.test(model));
-    const tokenLimit = opts?.maxTokens || maxTokens;
+    const requestedTokenLimit = opts?.maxTokens || maxTokens;
+    // Groq's current on-demand organization limits can reject a request when
+    // prompt tokens plus requested completion tokens exceed the minute quota.
+    // Keep sovereign turns bounded while preserving normal Conway/OpenAI limits.
+    const tokenLimit =
+      backend === "groq"
+        ? Math.min(requestedTokenLimit, Number(process.env.RITTY_GROQ_MAX_OUTPUT_TOKENS || 2048))
+        : requestedTokenLimit;
 
     const body: Record<string, unknown> = {
       model,
