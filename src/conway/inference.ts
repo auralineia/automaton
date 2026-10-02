@@ -57,6 +57,20 @@ export function createInferenceClient(
   });
   let currentModel = options.defaultModel;
   let maxTokens = options.maxTokens;
+  let lastGroqRequestAt = 0;
+
+  const throttleGroq = async (): Promise<void> => {
+    if (process.env.RITTY_MODE !== "sovereign") return;
+    const minIntervalMs = Number(process.env.RITTY_GROQ_MIN_INTERVAL_MS || 61000);
+    if (!Number.isFinite(minIntervalMs) || minIntervalMs <= 0) return;
+
+    const elapsed = Date.now() - lastGroqRequestAt;
+    const waitMs = Math.max(0, minIntervalMs - elapsed);
+    if (waitMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+    lastGroqRequestAt = Date.now();
+  };
 
   const chat = async (
     messages: ChatMessage[],
@@ -130,6 +144,10 @@ export function createInferenceClient(
       backend === "groq" ? (groqApiKey as string) :
       backend === "ollama" ? "ollama" :
       apiKey;
+
+    if (backend === "groq") {
+      await throttleGroq();
+    }
 
     return chatViaOpenAiCompatible({
       model,
