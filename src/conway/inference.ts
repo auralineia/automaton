@@ -27,13 +27,14 @@ interface InferenceClientOptions {
   lowComputeModel?: string;
   openaiApiKey?: string;
   groqApiKey?: string;
+  geminiApiKey?: string;
   anthropicApiKey?: string;
   ollamaBaseUrl?: string;
   /** Optional registry lookup — if provided, used before name heuristics */
   getModelProvider?: (modelId: string) => string | undefined;
 }
 
-type InferenceBackend = "conway" | "openai" | "groq" | "anthropic" | "ollama";
+type InferenceBackend = "conway" | "openai" | "groq" | "gemini" | "anthropic" | "ollama";
 
 function isLoopbackHttpUrl(url: string | undefined): boolean {
   if (!url) return false;
@@ -50,7 +51,7 @@ function isLoopbackHttpUrl(url: string | undefined): boolean {
 export function createInferenceClient(
   options: InferenceClientOptions,
 ): InferenceClient {
-  const { apiUrl, apiKey, openaiApiKey, groqApiKey, anthropicApiKey, ollamaBaseUrl, getModelProvider } = options;
+  const { apiUrl, apiKey, openaiApiKey, groqApiKey, geminiApiKey, anthropicApiKey, ollamaBaseUrl, getModelProvider } = options;
   const httpClient = new ResilientHttpClient({
     baseTimeout: INFERENCE_TIMEOUT_MS,
     retryableStatuses: [429, 500, 502, 503, 504],
@@ -83,6 +84,7 @@ export function createInferenceClient(
     const backend = resolveInferenceBackend(model, {
       openaiApiKey,
       groqApiKey,
+      geminiApiKey,
       anthropicApiKey,
       ollamaBaseUrl,
       getModelProvider,
@@ -148,11 +150,13 @@ export function createInferenceClient(
     const openAiLikeApiUrl =
       backend === "openai" ? "https://api.openai.com" :
       backend === "groq" ? "https://api.groq.com/openai" :
+      backend === "gemini" ? "https://generativelanguage.googleapis.com/v1beta/openai" :
       backend === "ollama" ? (ollamaBaseUrl as string).replace(/\/$/, "") :
       apiUrl;
     const openAiLikeApiKey =
       backend === "openai" ? (openaiApiKey as string) :
       backend === "groq" ? (groqApiKey as string) :
+      backend === "gemini" ? (geminiApiKey as string) :
       backend === "ollama" ? "ollama" :
       apiKey;
 
@@ -170,22 +174,54 @@ export function createInferenceClient(
         httpClient,
       });
     } catch (error) {
+      let lastGroqError: unknown = error;
+
       if (isSovereignGroq && isGroqTpmError(error)) {
         const emergencyBody = {
           ...body,
           max_completion_tokens: 128,
           messages: compactSovereignGroqMessages(messages, true).map(formatMessage),
         };
+
+        try {
+          return await chatViaOpenAiCompatible({
+            model,
+            body: emergencyBody,
+            apiUrl: openAiLikeApiUrl,
+            apiKey: openAiLikeApiKey,
+            backend,
+            httpClient,
+          });
+        } catch (emergencyError) {
+          lastGroqError = emergencyError;
+        }
+      }
+
+      // Groq remains primary. On a temporary Groq failure, use Gemini as the
+      // emergency backend. The next turn will try Groq again automatically.
+      if (backend === "groq" && geminiApiKey) {
+        const geminiModel = process.env.RITTY_GEMINI_MODEL || "gemini-3.8-flash";
+        const geminiBody: Record<string, unknown> = {
+          ...body,
+          model: geminiModel,
+        };
+
+        if ("max_completion_tokens" in geminiBody) {
+          geminiBody.max_tokens = geminiBody.max_completion_tokens;
+          delete geminiBody.max_completion_tokens;
+        }
+
         return chatViaOpenAiCompatible({
-          model,
-          body: emergencyBody,
-          apiUrl: openAiLikeApiUrl,
-          apiKey: openAiLikeApiKey,
-          backend,
+          model: geminiModel,
+          body: geminiBody,
+          apiUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+          apiKey: geminiApiKey,
+          backend: "gemini",
           httpClient,
         });
       }
-      throw error;
+
+      throw lastGroqError;
     }
   };
 
@@ -241,6 +277,7 @@ function resolveInferenceBackend(
     anthropicApiKey?: string;
     ollamaBaseUrl?: string;
     groqApiKey?: string;
+    geminiApiKey?: string;
     getModelProvider?: (modelId: string) => string | undefined;
   },
 ): InferenceBackend {
@@ -257,6 +294,7 @@ function resolveInferenceBackend(
     if (provider === "anthropic" && keys.anthropicApiKey) return "anthropic";
     if (provider === "openai" && keys.openaiApiKey) return "openai";
     if (provider === "groq" && keys.groqApiKey) return "groq";
+    if (provider === "gemini" && keys.geminiApiKey) return "gemini";
     if (provider === "conway") return "conway";
     // provider unknown or key not configured — fall through to heuristics
   }
@@ -265,6 +303,7 @@ function resolveInferenceBackend(
   if (keys.anthropicApiKey && /^claude/i.test(model)) return "anthropic";
   if (keys.openaiApiKey && /^(gpt-[3-9]|gpt-4|gpt-5|o[1-9][-\s.]|o[1-9]$|chatgpt)/i.test(model)) return "openai";
   if (keys.groqApiKey && /^(llama-|mixtral|gemma|qwen)/i.test(model)) return "groq";
+  if (keys.geminiApiKey && /^gemini-/i.test(model)) return "gemini";
   return "conway";
 
 }
@@ -274,15 +313,23 @@ async function chatViaOpenAiCompatible(params: {
   body: Record<string, unknown>;
   apiUrl: string;
   apiKey: string;
-  backend: "conway" | "openai" | "groq" | "ollama";
+  backend: "conway" | "openai" | "groq" | "gemini" | "ollama";
   httpClient: ResilientHttpClient;
 }): Promise<InferenceResponse> {
-  const resp = await params.httpClient.request(`${params.apiUrl}/v1/chat/completions`, {
+  const endpoint =
+    params.backend === "gemini"
+      ? `${params.apiUrl}/chat/completions`
+      : `${params.apiUrl}/v1/chat/completions`;
+
+  const resp = await params.httpClient.request(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization:
-        params.backend === "openai" || params.backend === "groq" || params.backend === "ollama"
+        params.backend === "openai" ||
+        params.backend === "groq" ||
+        params.backend === "gemini" ||
+        params.backend === "ollama"
           ? `Bearer ${params.apiKey}`
           : params.apiKey,
     },
