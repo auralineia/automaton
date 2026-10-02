@@ -17,7 +17,8 @@ import type {
 import { ResilientHttpClient } from "./http-client.js";
 import { compactSovereignGroqMessages, isGroqTpmError, SOVEREIGN_GROQ_MAX_OUTPUT_TOKENS } from "./groq-context.js";
 
-const INFERENCE_TIMEOUT_MS = 60_000;
+const INFERENCE_TIMEOUT_MS = 30_000;
+const SOVEREIGN_PROVIDER_RETRIES = 0;
 
 interface InferenceClientOptions {
   apiUrl: string;
@@ -172,6 +173,9 @@ export function createInferenceClient(
         apiKey: openAiLikeApiKey,
         backend,
         httpClient,
+        retries: process.env.RITTY_MODE === "sovereign" && (backend === "groq" || backend === "gemini")
+          ? SOVEREIGN_PROVIDER_RETRIES
+          : undefined,
       });
     } catch (error) {
       let lastGroqError: unknown = error;
@@ -191,6 +195,7 @@ export function createInferenceClient(
             apiKey: openAiLikeApiKey,
             backend,
             httpClient,
+            retries: 0,
           });
         } catch (emergencyError) {
           lastGroqError = emergencyError;
@@ -218,6 +223,7 @@ export function createInferenceClient(
           apiKey: geminiApiKey,
           backend: "gemini",
           httpClient,
+          retries: 0,
         });
       }
 
@@ -315,6 +321,7 @@ async function chatViaOpenAiCompatible(params: {
   apiKey: string;
   backend: "conway" | "openai" | "groq" | "gemini" | "ollama";
   httpClient: ResilientHttpClient;
+  retries?: number;
 }): Promise<InferenceResponse> {
   const endpoint =
     params.backend === "gemini"
@@ -335,6 +342,7 @@ async function chatViaOpenAiCompatible(params: {
     },
     body: JSON.stringify(params.body),
     timeout: INFERENCE_TIMEOUT_MS,
+    ...(params.retries !== undefined ? { retries: params.retries } : {}),
   });
 
   if (!resp.ok) {
