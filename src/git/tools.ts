@@ -85,7 +85,7 @@ export async function gitCommit(
   }
 
   const result = await conway.exec(
-    `cd ${escapeShellArg(repoPath)} && git commit -m ${escapeShellArg(message)} --allow-empty 2>&1`,
+    `cd ${escapeShellArg(repoPath)} && git -c safe.directory=${escapeShellArg(repoPath)} -c user.name="Automaton" -c user.email="automaton@conway.tech" commit -m ${escapeShellArg(message)} --allow-empty 2>&1`,
     10000,
   );
 
