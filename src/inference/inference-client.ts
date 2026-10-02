@@ -12,6 +12,16 @@ const RETRY_BACKOFF_MS = [1000, 2000, 4000] as const;
 const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5;
 const CIRCUIT_BREAKER_DISABLE_MS = 5 * 60_000;
 
+// Groq's sovereign/on-demand org currently enforces an 8k TPM ceiling.
+// Keep a wide safety margin because provider-side token accounting includes
+// tool schemas and protocol overhead that our local estimate cannot see.
+const SOVEREIGN_GROQ_TPM_LIMIT = 8_000;
+const SOVEREIGN_GROQ_INPUT_BUDGET = 6_200;
+const SOVEREIGN_GROQ_DEFAULT_MAX_OUTPUT = 512;
+const SOVEREIGN_GROQ_SYSTEM_BUDGET = 4_000;
+const SOVEREIGN_GROQ_MEMORY_BUDGET = 400;
+
+
 export interface UnifiedInferenceResult {
   content: string;
   toolCalls?: unknown[];
@@ -249,7 +259,8 @@ export class UnifiedInferenceClient {
   ): Promise<UnifiedInferenceResult> {
     await this.throttleGroq(providerId);
     const startedAt = Date.now();
-    const payload = this.buildChatCompletionRequest(model.id, params);
+    const safeParams = constrainSovereignGroqRequest(providerId, params);
+    const payload = this.buildChatCompletionRequest(model.id, safeParams);
     if (params.stream) {
       const stream = await client.chat.completions.create({
         ...payload,
@@ -502,6 +513,166 @@ export class UnifiedInferenceClient {
     const credits = Number(rawCredits);
     return Number.isFinite(credits) && credits >= 100 && credits < 1000;
   }
+}
+
+function constrainSovereignGroqRequest(
+  providerId: string,
+  params: SharedChatParams,
+): SharedChatParams {
+  if (process.env.RITTY_MODE !== "sovereign" || providerId !== "groq") {
+    return params;
+  }
+
+  const configuredMaxOutput = Number(process.env.RITTY_GROQ_MAX_OUTPUT_TOKENS);
+  const maxOutputTokens = Math.max(
+    128,
+    Math.min(
+      Number.isFinite(configuredMaxOutput) && configuredMaxOutput > 0
+        ? configuredMaxOutput
+        : SOVEREIGN_GROQ_DEFAULT_MAX_OUTPUT,
+      SOVEREIGN_GROQ_DEFAULT_MAX_OUTPUT,
+    ),
+  );
+
+  const toolTokens = estimateTokens(JSON.stringify(params.tools ?? []));
+  const messageBudget = Math.max(
+    1_500,
+    Math.min(
+      SOVEREIGN_GROQ_INPUT_BUDGET,
+      SOVEREIGN_GROQ_TPM_LIMIT - maxOutputTokens - 700,
+    ) - toolTokens,
+  );
+
+  const messages = compactSovereignGroqMessages(params.messages, messageBudget);
+
+  return {
+    ...params,
+    messages,
+    maxTokens: maxOutputTokens,
+  };
+}
+
+function compactSovereignGroqMessages(
+  messages: ChatMessage[],
+  maxInputTokens: number,
+): ChatMessage[] {
+  if (messages.length === 0) {
+    return messages;
+  }
+
+  const systemMessages = messages.filter((message) => message.role === "system");
+  const conversational = messages.filter((message) => message.role !== "system");
+
+  const primarySystem = systemMessages[0];
+  const keptSystem: ChatMessage[] = [];
+
+  if (primarySystem) {
+    keptSystem.push({
+      ...primarySystem,
+      content: truncateToTokens(primarySystem.content, SOVEREIGN_GROQ_SYSTEM_BUDGET),
+    });
+  }
+
+  if (systemMessages.length > 1) {
+    keptSystem.push({
+      ...systemMessages[systemMessages.length - 1],
+      content: truncateToTokens(
+        systemMessages[systemMessages.length - 1].content,
+        SOVEREIGN_GROQ_MEMORY_BUDGET,
+      ),
+    });
+  }
+
+  let remaining = Math.max(
+    600,
+    maxInputTokens - estimateMessagesTokens(keptSystem),
+  );
+
+  // Messages are naturally grouped by user turns in the agent context.
+  // Keep the newest complete groups first so tool-call/result pairs survive.
+  const groups: ChatMessage[][] = [];
+  let current: ChatMessage[] = [];
+
+  for (const message of conversational) {
+    if (message.role === "user" && current.length > 0) {
+      groups.push(current);
+      current = [];
+    }
+    current.push(message);
+  }
+  if (current.length > 0) {
+    groups.push(current);
+  }
+
+  const keptGroups: ChatMessage[][] = [];
+  for (let i = groups.length - 1; i >= 0; i--) {
+    const group = groups[i];
+    const groupTokens = estimateMessagesTokens(group);
+
+    if (groupTokens <= remaining) {
+      keptGroups.unshift(group);
+      remaining -= groupTokens;
+      continue;
+    }
+
+    // For the newest oversized group, keep the newest messages and truncate
+    // their text so the request remains below the hard TPM ceiling.
+    if (i === groups.length - 1 && keptGroups.length === 0) {
+      const compacted = compactNewestGroup(group, remaining);
+      if (compacted.length > 0) {
+        keptGroups.unshift(compacted);
+      }
+    }
+    break;
+  }
+
+  return [...keptSystem, ...keptGroups.flat()];
+}
+
+function compactNewestGroup(group: ChatMessage[], maxTokens: number): ChatMessage[] {
+  const result: ChatMessage[] = [];
+  let remaining = maxTokens;
+
+  for (let i = group.length - 1; i >= 0 && remaining > 0; i--) {
+    const message = group[i];
+    const budget = Math.max(1, remaining);
+    const compacted: ChatMessage = {
+      ...message,
+      content: truncateToTokens(message.content, budget),
+    };
+    const tokens = estimateMessagesTokens([compacted]);
+    result.unshift(compacted);
+    remaining -= Math.max(1, tokens);
+  }
+
+  return result;
+}
+
+function estimateMessagesTokens(messages: ChatMessage[]): number {
+  let chars = 0;
+  for (const message of messages) {
+    chars += message.content?.length ?? 0;
+    chars += message.name?.length ?? 0;
+    if (message.tool_calls) {
+      chars += JSON.stringify(message.tool_calls).length;
+    }
+    if (message.tool_call_id) {
+      chars += message.tool_call_id.length;
+    }
+  }
+  return Math.ceil(chars / 4) + messages.length * 8;
+}
+
+function estimateTokens(text: string): number {
+  return Math.ceil((text || "").length / 4);
+}
+
+function truncateToTokens(text: string, maxTokens: number): string {
+  const maxChars = Math.max(256, Math.floor(maxTokens * 4));
+  if (text.length <= maxChars) {
+    return text;
+  }
+  return text.slice(0, maxChars) + "\n[context compacted for Groq TPM limit]";
 }
 
 function extractText(content: unknown): string {
