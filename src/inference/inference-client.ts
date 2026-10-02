@@ -92,6 +92,26 @@ class ProviderAttemptError extends Error {
 export class UnifiedInferenceClient {
   private readonly registry: ProviderRegistry;
   private readonly circuitBreaker = new Map<string, CircuitBreakerState>();
+  private lastGroqRequestAt = 0;
+
+  private async throttleGroq(providerId: string): Promise<void> {
+    if (process.env.RITTY_MODE !== "sovereign" || providerId !== "groq") {
+      return;
+    }
+
+    const minIntervalMs = Number(process.env.RITTY_GROQ_MIN_INTERVAL_MS || 61000);
+    if (!Number.isFinite(minIntervalMs) || minIntervalMs <= 0) {
+      return;
+    }
+
+    const elapsed = Date.now() - this.lastGroqRequestAt;
+    const waitMs = Math.max(0, minIntervalMs - elapsed);
+    if (waitMs > 0) {
+      await sleep(waitMs);
+    }
+
+    this.lastGroqRequestAt = Date.now();
+  }
 
   constructor(registry: ProviderRegistry) {
     this.registry = registry;
@@ -227,6 +247,7 @@ export class UnifiedInferenceClient {
     requestedTier: ModelTier,
     params: SharedChatParams,
   ): Promise<UnifiedInferenceResult> {
+    await this.throttleGroq(providerId);
     const startedAt = Date.now();
     const payload = this.buildChatCompletionRequest(model.id, params);
     if (params.stream) {
