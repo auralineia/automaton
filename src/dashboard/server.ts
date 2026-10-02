@@ -113,13 +113,46 @@ filter:drop-shadow(0 0 35px rgba(86,240,208,.33));animation:breathe 4.8s ease-in
 </div>
 <nav class="mobile-nav"><a class="active" href="#overview">Visão</a><a href="#activity">Atividade</a><a href="#skills">Skills</a><a href="#system">Sistema</a></nav>
 <script>
-const $ = (id)=>document.getElementById(id);
-const esc = (v)=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-function fmtTime(v){if(!v)return"—";try{return new Date(v).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"})}catch{return v}}
-function fmtAge(v){if(!v)return"—";const s=Math.max(0,Math.floor((Date.now()-new Date(v).getTime())/1000));if(s<60)return`${s}s atrás`;if(s<3600)return`${Math.floor(s/60)}min atrás`;return`${Math.floor(s/3600)}h atrás`}
-function fmtUp(sec){if(sec==null)return"—";let s=Math.floor(sec);const d=Math.floor(s/86400);s%=86400;const h=Math.floor(s/3600);s%=3600;const m=Math.floor(s/60);return d?`${d}d ${h}h`:`${h}h ${m}m`}
-function setConn(ok,text){$("mainDot").className="dot "+(ok?"ok":"bad");$("sideDot").className="dot "+(ok?"ok":"bad");$("mainStatus").textContent=text;$("sideStatus").textContent=text}
-function rowHtml(icon,title,meta,right,rightClass=""){return `<div class="row"><div class="dot ${rightClass==="errtxt"?"bad":"ok"}"></div><div><div class="name">${esc(title)}</div><div class="meta">${esc(meta)}</div></div><div class="right ${rightClass}">${esc(right)}</div></div>`}
+const $ = function(id){ return document.getElementById(id); };
+const esc = function(v){
+  return String(v == null ? "" : v)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;");
+};
+function fmtTime(v){
+  if(!v) return "—";
+  try{
+    return new Date(v).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  }catch(e){ return v; }
+}
+function fmtAge(v){
+  if(!v) return "—";
+  var s=Math.max(0,Math.floor((Date.now()-new Date(v).getTime())/1000));
+  if(s<60) return String(s)+"s atrás";
+  if(s<3600) return String(Math.floor(s/60))+"min atrás";
+  return String(Math.floor(s/3600))+"h atrás";
+}
+function fmtUp(sec){
+  if(sec==null) return "—";
+  var s=Math.floor(sec);
+  var d=Math.floor(s/86400); s%=86400;
+  var h=Math.floor(s/3600); s%=3600;
+  var m=Math.floor(s/60);
+  return d ? String(d)+"d "+String(h)+"h" : String(h)+"h "+String(m)+"m";
+}
+function setConn(ok,text){
+  $("mainDot").className="dot "+(ok?"ok":"bad");
+  $("sideDot").className="dot "+(ok?"ok":"bad");
+  $("mainStatus").textContent=text;
+  $("sideStatus").textContent=text;
+}
+function rowHtml(title,meta,right,rightClass){
+  rightClass=rightClass||"";
+  var dotClass=rightClass==="errtxt" ? "bad" : "ok";
+  return '<div class="row"><div class="dot '+dotClass+'"></div><div><div class="name">'+esc(title)+'</div><div class="meta">'+esc(meta)+'</div></div><div class="right '+rightClass+'">'+esc(right)+'</div></div>';
+}
 function render(d){
   setConn(true,"Conectado");
   $("sideUpdated").textContent="Atualizado "+fmtTime(d.generatedAt);
@@ -127,33 +160,65 @@ function render(d){
   $("heroName").textContent=d.identity.name;
   $("mState").textContent=d.runtime.state;
   $("mTurns").textContent=d.metrics.turnsTotal;
-  $("mTurnsSub").textContent=`${d.metrics.turns1h} na última hora`;
+  $("mTurnsSub").textContent=String(d.metrics.turns1h)+" na última hora";
   $("mSkills").textContent=d.metrics.skills;
   $("mUptime").textContent=fmtUp(d.runtime.uptimeSeconds);
   $("statePill").textContent="Estado · "+d.runtime.state;
   $("modelPill").textContent="Modelo · "+d.identity.model;
   $("healthErrors").textContent=d.metrics.errors1h;
-  $("toolSummary").textContent=`${d.metrics.toolCalls1h} calls / 1h`;
+  $("toolSummary").textContent=String(d.metrics.toolCalls1h)+" calls / 1h";
   $("activityWindow").textContent="mais recentes";
-  $("hbSummary").textContent=`${d.metrics.heartbeatsActive} ativos`;
-  $("childSummary").textContent=`${d.metrics.childrenAlive} vivos`;
-  $("skillSummary").textContent=`${d.metrics.skills} ativas`;
+  $("hbSummary").textContent=String(d.metrics.heartbeatsActive)+" ativos";
+  $("childSummary").textContent=String(d.metrics.childrenAlive)+" vivos";
+  $("skillSummary").textContent=String(d.metrics.skills)+" ativas";
 
-  $("turnList").innerHTML=d.recentTurns.length?d.recentTurns.map(t=>rowHtml("","Turn "+t.id.slice(0,10),fmtTime(t.timestamp)+ " · "+(t.toolCalls||0)+" tools",t.state,t.state==="error"?"errtxt":"")).join(""):'<div class="note">Nenhum turn registrado ainda.</div>';
-  $("toolList").innerHTML=d.recentTools.length?d.recentTools.map(t=>rowHtml("",t.name,fmtTime(t.timestamp),t.failed?"FALHOU":(t.durationMs?Math.round(t.durationMs)+" ms":"OK"),t.failed?"errtxt":"")).join(""):'<div class="note">Nenhuma ferramenta registrada ainda.</div>';
-  $("skillList").innerHTML=d.skills.length?d.skills.map(s=>`<div class="skill"><strong>${esc(s.name)}</strong><p>${esc(s.description||"Sem descrição.")}</p></div>`).join(""):'<div class="note">Nenhuma skill ativa.</div>';
-  $("hbList").innerHTML=d.heartbeats.length?d.heartbeats.map(h=>rowHtml("",h.name,`${h.schedule||"sem agenda"} · último ${fmtAge(h.lastRun)}`,h.enabled?"ATIVO":"OFF",h.enabled?"":"errtxt")).join(""):'<div class="note">Nenhum heartbeat configurado.</div>';
-  $("childList").innerHTML=d.children.length?d.children.slice(0,8).map(c=>rowHtml("",c.name||"worker",c.status||"sem status",c.status==="dead"?"DEAD":"VIVO",c.status==="dead"?"errtxt":"")).join(""):'<div class="note">Nenhum child/worker registrado.</div>';
+  $("turnList").innerHTML=d.recentTurns.length
+    ? d.recentTurns.map(function(t){
+        return rowHtml("Turn "+t.id.slice(0,10),fmtTime(t.timestamp)+" · "+String(t.toolCalls||0)+" tools",t.state,t.state==="error"?"errtxt":"");
+      }).join("")
+    : '<div class="note">Nenhum turn registrado ainda.</div>';
+
+  $("toolList").innerHTML=d.recentTools.length
+    ? d.recentTools.map(function(t){
+        return rowHtml(t.name,fmtTime(t.timestamp),t.failed?"FALHOU":(t.durationMs?String(Math.round(t.durationMs))+" ms":"OK"),t.failed?"errtxt":"");
+      }).join("")
+    : '<div class="note">Nenhuma ferramenta registrada ainda.</div>';
+
+  $("skillList").innerHTML=d.skills.length
+    ? d.skills.map(function(s){
+        return '<div class="skill"><strong>'+esc(s.name)+'</strong><p>'+esc(s.description||"Sem descrição.")+'</p></div>';
+      }).join("")
+    : '<div class="note">Nenhuma skill ativa.</div>';
+
+  $("hbList").innerHTML=d.heartbeats.length
+    ? d.heartbeats.map(function(h){
+        return rowHtml(h.name,(h.schedule||"sem agenda")+" · último "+fmtAge(h.lastRun),h.enabled?"ATIVO":"OFF",h.enabled?"":"errtxt");
+      }).join("")
+    : '<div class="note">Nenhum heartbeat configurado.</div>';
+
+  $("childList").innerHTML=d.children.length
+    ? d.children.slice(0,8).map(function(ch){
+        return rowHtml(ch.name||"worker",ch.status||"sem status",ch.status==="dead"?"DEAD":"VIVO",ch.status==="dead"?"errtxt":"");
+      }).join("")
+    : '<div class="note">Nenhum child/worker registrado.</div>';
 }
 async function load(){
   try{
-    const t=performance.now();const r=await fetch("/api/dashboard",{cache:"no-store"});
-    const d=await r.json();d.apiLatencyMs=Math.round(performance.now()-t);render(d);
+    var started=performance.now();
+    var r=await fetch("/api/dashboard",{cache:"no-store"});
+    if(!r.ok) throw new Error("dashboard "+r.status);
+    var d=await r.json();
+    d.apiLatencyMs=Math.round(performance.now()-started);
+    render(d);
   }catch(e){
-    setConn(false,"Sem conexão");$("sideUpdated").textContent="Não foi possível ler o runtime";$("healthRuntime").textContent="ERRO";
+    setConn(false,"Sem conexão");
+    $("sideUpdated").textContent="Não foi possível ler o runtime";
+    $("healthRuntime").textContent="ERRO";
   }
 }
-$("refresh").addEventListener("click",load);load();setInterval(load,5000);
+$("refresh").addEventListener("click",load);
+load();
+setInterval(load,5000);
 </script>
 </body></html>`;
 
