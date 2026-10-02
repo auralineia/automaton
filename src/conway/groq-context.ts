@@ -1,6 +1,6 @@
 import type { ChatMessage } from "../types.js";
 
-export const SOVEREIGN_GROQ_MAX_OUTPUT_TOKENS = 256;
+export const SOVEREIGN_GROQ_MAX_OUTPUT_TOKENS = 2500;
 const SYSTEM_CHARS = 6000;
 const MEMORY_CHARS = 600;
 const RECENT_CHARS = 2400;
