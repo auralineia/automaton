@@ -103,9 +103,10 @@ filter:drop-shadow(0 0 35px rgba(86,240,208,.33));animation:breathe 4.8s ease-in
         <div class="list">
           <div class="row"><div class="dot ok"></div><div><div class="name">Runtime</div><div class="meta">processo respondeu ao painel</div></div><div class="right oktxt" id="healthRuntime">OK</div></div>
           <div class="row"><div class="dot"></div><div><div class="name">Atualização</div><div class="meta" id="healthUpdated">—</div></div><div class="right">LIVE</div></div>
-          <div class="row"><div class="dot"></div><div><div class="name">Falhas recentes</div><div class="meta">tool calls com erro</div></div><div class="right" id="healthErrors">—</div></div>
-          <div class="row"><div class="dot"></div><div><div class="name">Deploy</div><div class="meta">estado de deploy não é inferido pelo app</div></div><div class="right muted">N/D</div></div>
+          <div class="row"><div class="dot"></div><div><div class="name">Falhas recentes</div><div class="meta">tool calls com erro · última hora</div></div><div class="right" id="healthErrors">—</div></div>
         </div>
+        <div class="panel-head" style="margin-top:15px"><h4>Erros recentes</h4><span id="errorSummary">sanitizados</span></div>
+        <div id="errorList" class="list"></div>
       </div>
     </section>
     <div class="footer">RITTY Command Center · leitura operacional · sem controles financeiros</div>
@@ -156,7 +157,7 @@ function rowHtml(title,meta,right,rightClass){
 function render(d){
   setConn(true,"Conectado");
   $("sideUpdated").textContent="Atualizado "+fmtTime(d.generatedAt);
-  $("healthUpdated").textContent=fmtAge(d.generatedAt);
+  $("healthUpdated").textContent=fmtAge(d.generatedAt)+(d.apiLatencyMs!=null?" · API "+String(d.apiLatencyMs)+" ms":"");
   $("heroName").textContent=d.identity.name;
   $("mState").textContent=d.runtime.state;
   $("mTurns").textContent=d.metrics.turnsTotal;
@@ -201,6 +202,13 @@ function render(d){
         return rowHtml(ch.name||"worker",ch.status||"sem status",ch.status==="dead"?"DEAD":"VIVO",ch.status==="dead"?"errtxt":"");
       }).join("")
     : '<div class="note">Nenhum child/worker registrado.</div>';
+
+  $("errorSummary").textContent=d.recentErrors.length ? String(d.recentErrors.length)+" registros" : "nenhum";
+  $("errorList").innerHTML=d.recentErrors.length
+    ? d.recentErrors.map(function(e){
+        return rowHtml(e.name,e.category+" · "+fmtTime(e.timestamp),"ERRO","errtxt");
+      }).join("")
+    : '<div class="note">Nenhum erro recente registrado.</div>';
 }
 async function load(){
   try{
@@ -288,6 +296,22 @@ function buildSnapshot(db: AutomatonDatabase, config: AutomatonConfig) {
     timestamp: String(row.timestamp),
   }));
 
+  const recentErrors = db.raw.prepare(
+    "SELECT tc.name,tc.error,t.timestamp FROM tool_calls tc JOIN turns t ON t.id=tc.turn_id WHERE tc.error IS NOT NULL ORDER BY t.timestamp DESC LIMIT 8",
+  ).all().map((row: any) => {
+    const raw = String(row.error ?? "").toLowerCase();
+    const category =
+      /429|rate.?limit|quota|resource.?exhausted/.test(raw) ? "Limite de provedor" :
+      /timeout|timed out|deadline/.test(raw) ? "Timeout" :
+      /network|fetch|socket|econn|dns/.test(raw) ? "Rede" :
+      "Falha de ferramenta";
+    return {
+      name: String(row.name ?? "unknown"),
+      category,
+      timestamp: String(row.timestamp),
+    };
+  });
+
   const lastTurn = recentTurns[0]?.timestamp ?? null;
   const childrenAlive = children.filter((c) => !["dead","failed","cleaned_up"].includes(c.status)).length;
   const heartbeatsActive = heartbeats.filter((h) => h.enabled).length;
@@ -321,6 +345,7 @@ function buildSnapshot(db: AutomatonDatabase, config: AutomatonConfig) {
     },
     recentTurns,
     recentTools,
+    recentErrors,
     skills,
     heartbeats,
     children,
