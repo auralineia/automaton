@@ -16,10 +16,10 @@ const CIRCUIT_BREAKER_DISABLE_MS = 5 * 60_000;
 // Keep a wide safety margin because provider-side token accounting includes
 // tool schemas and protocol overhead that our local estimate cannot see.
 const SOVEREIGN_GROQ_TPM_LIMIT = 8_000;
-const SOVEREIGN_GROQ_INPUT_BUDGET = 6_200;
-const SOVEREIGN_GROQ_DEFAULT_MAX_OUTPUT = 512;
-const SOVEREIGN_GROQ_SYSTEM_BUDGET = 4_000;
-const SOVEREIGN_GROQ_MEMORY_BUDGET = 400;
+const SOVEREIGN_GROQ_INPUT_BUDGET = 4_800;
+const SOVEREIGN_GROQ_DEFAULT_MAX_OUTPUT = 384;
+const SOVEREIGN_GROQ_SYSTEM_BUDGET = 3_200;
+const SOVEREIGN_GROQ_MEMORY_BUDGET = 300;
 
 
 export interface UnifiedInferenceResult {
@@ -672,7 +672,13 @@ function truncateToTokens(text: string, maxTokens: number): string {
   if (text.length <= maxChars) {
     return text;
   }
-  return text.slice(0, maxChars) + "\n[context compacted for Groq TPM limit]";
+
+  const marker = "\n[context compacted for Groq TPM limit]\n";
+  const available = Math.max(128, maxChars - marker.length);
+  const head = Math.floor(available * 0.7);
+  const tail = available - head;
+
+  return text.slice(0, head) + marker + text.slice(-tail);
 }
 
 function extractText(content: unknown): string {
