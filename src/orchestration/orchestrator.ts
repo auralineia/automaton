@@ -549,11 +549,11 @@ export class Orchestrator {
         const leaseValue = this.params.db
           .prepare("SELECT value FROM kv WHERE key = ?")
           .get(leaseKey) as { value?: string } | undefined;
-        const leaseOrigin = task.metadata.startedAt ?? leaseValue?.value ?? task.metadata.createdAt;
+        const leaseOrigin = task.startedAt ?? leaseValue?.value ?? task.createdAt;
         const leaseStartedAt = new Date(leaseOrigin).getTime();
-        const timeoutMs = Math.max(60_000, Number(task.metadata.timeoutMs) || 300_000);
+        const timeoutMs = Math.max(60_000, Number(task.timeoutMs) || 300_000);
         const ageMs = Number.isFinite(leaseStartedAt) ? Math.max(0, now - leaseStartedAt) : 0;
-        const legacyStale = !task.metadata.startedAt && !leaseValue?.value && ageMs >= 120_000;
+        const legacyStale = !task.startedAt && !leaseValue?.value && ageMs >= 120_000;
         const timedOut = ageMs >= timeoutMs;
 
         if (!alive || legacyStale || timedOut) {
@@ -616,7 +616,7 @@ export class Orchestrator {
               description: task.description,
               agentRole: task.agentRole,
               dependencies: task.dependencies,
-              timeoutMs: task.metadata.timeoutMs,
+              timeoutMs: task.timeoutMs,
             }),
           });
 
