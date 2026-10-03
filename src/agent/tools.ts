@@ -562,26 +562,39 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         required: ["package"],
       },
       execute: async (args, ctx) => {
-        const pkg = args.package as string;
+        // Accept the common `name` alias too; some models emit it even when
+        // the declared parameter is `package`.
+        const pkg = String(args.package ?? args.name ?? "").trim();
         // Defense-in-depth: validate package name inline in case the
         // policy engine's validate.package_name rule is bypassed.
-        if (!/^[@a-zA-Z0-9._\/-]+$/.test(pkg)) {
-          return `Blocked: invalid package name "${pkg}"`;
+        if (!pkg || !/^[@a-zA-Z0-9._\/-]+$/.test(pkg)) {
+          return `Blocked: invalid package name "${pkg || "(empty)"}"`;
         }
-        const result = await ctx.conway.exec(`npm install -g ${pkg}`, 60000);
 
-        const { ulid } = await import("ulid");
-        ctx.db.insertModification({
-          id: ulid(),
-          timestamp: new Date().toISOString(),
-          type: "tool_install",
-          description: `Installed npm package: ${pkg}`,
-          reversible: true,
-        });
+        // Sovereign runtime images can have Node + pnpm without the npm CLI.
+        // Install locally in the current working directory so applications
+        // can resolve the dependency without relying on global module paths.
+        const command =
+          "if command -v npm >/dev/null 2>&1; then " +
+          `npm install ${pkg}` +
+          "; elif command -v pnpm >/dev/null 2>&1; then " +
+          `pnpm add ${pkg}` +
+          "; else echo 'No npm-compatible package manager found' >&2; exit 127; fi";
+        const result = await ctx.conway.exec(command, 120000);
 
-        return result.exitCode === 0
-          ? `Installed: ${pkg}`
-          : `Failed to install ${pkg}: ${result.stderr}`;
+        if (result.exitCode === 0) {
+          const { ulid } = await import("ulid");
+          ctx.db.insertModification({
+            id: ulid(),
+            timestamp: new Date().toISOString(),
+            type: "tool_install",
+            description: `Installed npm package locally: ${pkg}`,
+            reversible: true,
+          });
+          return `Installed: ${pkg}`;
+        }
+
+        return `Failed to install ${pkg}: ${result.stderr || result.stdout}`;
       },
     },
     // ── Self-Mod: Upstream Awareness ──
