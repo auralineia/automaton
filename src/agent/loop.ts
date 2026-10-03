@@ -241,6 +241,26 @@ export async function runAgentLoop(
         config: {
           ...config,
           spawnAgent: async (task: any) => {
+            // Sovereign mode runs workers locally in-process. Avoid spawning
+            // remote Conway children that can remain marked alive after the
+            // actual worker is gone.
+            if (process.env.RITTY_MODE === "sovereign") {
+              try {
+                const spawned = initializedWorkerPool.spawn(task);
+                logger.info("[ORCHESTRATION] Spawned local sovereign worker", {
+                  taskId: task.id,
+                  address: spawned.address,
+                });
+                return spawned;
+              } catch (localError) {
+                logger.warn("Failed to spawn local sovereign worker", {
+                  taskId: task.id,
+                  error: localError instanceof Error ? localError.message : String(localError),
+                });
+                return null;
+              }
+            }
+
             // Try Conway sandbox spawn first (production)
             try {
               const { generateGenesisConfig } = await import("../replication/genesis.js");
