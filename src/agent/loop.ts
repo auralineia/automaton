@@ -365,6 +365,22 @@ export async function runAgentLoop(
     logger.warn(`[INBOX] Recovered ${recoveredInbox.changes} message(s) left in_progress by a previous runtime instance.`);
   }
 
+  // Recover the latest substantial creator request after a restart.
+  if (!db.getKV("creator_task_active")) {
+    try {
+      const row = db.raw.prepare(
+        "SELECT input,timestamp FROM turns WHERE input_source = 'creator' AND input IS NOT NULL ORDER BY timestamp DESC LIMIT 1",
+      ).get() as { input?: string; timestamp?: string } | undefined;
+      const input = String(row?.input ?? "").trim();
+      const age = row?.timestamp ? Date.now() - new Date(row.timestamp).getTime() : Infinity;
+      if (input.length > 100 && age >= 0 && age < 24 * 60 * 60 * 1000) {
+        db.setKV("creator_task_active", input);
+        db.deleteKV("sleep_until");
+        logger.info("[CREATOR] Recovered latest creator request after restart.");
+      }
+    } catch {}
+  }
+
   // Set start time
   if (!db.getKV("start_time")) {
     db.setKV("start_time", new Date().toISOString());
