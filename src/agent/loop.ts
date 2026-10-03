@@ -705,10 +705,12 @@ export async function runAgentLoop(
       if (orchestrator) {
         const now = Date.now();
         const staleTasks = db.raw.prepare(
-          `SELECT id, assigned_to, status, started_at, created_at, timeout_ms
-           FROM task_graph
-           WHERE status IN ('assigned', 'running')
-             AND assigned_to IS NOT NULL`,
+          `SELECT t.id, t.assigned_to, t.status, t.started_at, t.created_at, t.timeout_ms,
+                  g.title AS goal_title, g.description AS goal_description
+           FROM task_graph t
+           LEFT JOIN goals g ON g.id = t.goal_id
+           WHERE t.status IN ('assigned', 'running')
+             AND t.assigned_to IS NOT NULL`,
         ).all() as Array<{
           id: string;
           assigned_to: string;
@@ -716,6 +718,8 @@ export async function runAgentLoop(
           started_at: string | null;
           created_at: string;
           timeout_ms: number;
+          goal_title: string | null;
+          goal_description: string | null;
         }>;
 
         const creatorExecutionActive = creatorTaskActive || pendingInput?.source === "creator";
@@ -724,16 +728,29 @@ export async function runAgentLoop(
           const isSelfAssigned = task.assigned_to === identity.address;
 
           if (isSelfAssigned) {
-            // The parent cannot execute an autonomous task while an explicit
-            // creator command is being processed. Release the old self-assigned
-            // lease so it can be picked up by a worker after the creator task.
+            // A self-assigned task has no independent worker heartbeat.
+            // Recover it when it is stale, but never touch financial/wallet
+            // goals automatically.
+            const goalText = `${task.goal_title ?? ""} ${task.goal_description ?? ""}`.toLowerCase();
+            const financialLike =
+              /(wallet|transfer|trading|trade|investment|invest|payment|money|finance|financial|crypto|bitcoin|usdc|currency|exchange)/i.test(goalText);
             const selfLeaseOrigin = task.started_at ?? task.created_at;
             const selfAgeMs = Math.max(0, now - new Date(selfLeaseOrigin).getTime());
-            if (creatorExecutionActive && selfAgeMs >= 60_000) {
-              logger.warn("[ORCHESTRATION] Releasing stale self-assigned task while creator command is active", {
+            const selfTimeoutMs = Math.max(60_000, Number(task.timeout_ms) || 300_000);
+            const shouldRecoverSelfTask =
+              !financialLike &&
+              (
+                (creatorExecutionActive && selfAgeMs >= 60_000) ||
+                (!creatorExecutionActive && selfAgeMs >= selfTimeoutMs)
+              );
+
+            if (shouldRecoverSelfTask) {
+              logger.warn("[ORCHESTRATION] Releasing stale self-assigned task", {
                 taskId: task.id,
                 previousStatus: task.status,
                 ageMs: selfAgeMs,
+                timeoutMs: selfTimeoutMs,
+                creatorExecutionActive,
               });
               db.raw.prepare(
                 "UPDATE task_graph SET status = 'pending', assigned_to = NULL, started_at = NULL WHERE id = ?",
