@@ -219,15 +219,6 @@ export class Orchestrator {
       return spawned;
     }
 
-    const reassigned = this.findBusyAgentForReassign();
-    if (reassigned) {
-      return {
-        agentAddress: reassigned.address,
-        agentName: reassigned.name,
-        spawned: false,
-      };
-    }
-
     // Fallback: assign to the parent agent itself (self-execution mode).
     // This handles local dev environments where spawning child sandboxes
     // is not available, and ensures goals still make progress.
