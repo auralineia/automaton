@@ -366,6 +366,56 @@ export async function runAgentLoop(
     logger.warn(`[INBOX] Recovered ${recoveredInbox.changes} message(s) left in_progress by a previous runtime instance.`);
   }
 
+  // A parent-assigned task cannot survive a process restart as an active
+  // execution. Release stale self-assigned tasks so future goals are picked
+  // up by a real worker instead of remaining "assigned" forever. Financial
+  // or wallet-related goals are deliberately left untouched.
+  try {
+    const now = Date.now();
+    const selfTasks = db.raw.prepare(
+      `SELECT t.id, t.started_at, t.created_at, t.timeout_ms, g.title, g.description
+       FROM task_graph t
+       JOIN goals g ON g.id = t.goal_id
+       WHERE t.assigned_to = ?
+         AND t.status IN ('assigned', 'running')`,
+    ).all(identity.address) as Array<{
+      id: string;
+      started_at: string | null;
+      created_at: string;
+      timeout_ms: number;
+      title: string;
+      description: string;
+    }>;
+
+    for (const task of selfTasks) {
+      const goalText = `${task.title} ${task.description}`.toLowerCase();
+      const financialLike =
+        /(wallet|transfer|trading|trade|investment|invest|payment|money|finance|financial|crypto|bitcoin|usdc|currency|exchange|payment)/i.test(goalText);
+      if (financialLike) continue;
+
+      const origin = task.started_at ?? task.created_at;
+      const ageMs = Math.max(0, now - new Date(origin).getTime());
+      const timeoutMs = Math.max(60_000, Number(task.timeout_ms) || 300_000);
+      if (ageMs >= Math.max(120_000, timeoutMs)) {
+        db.raw.prepare(
+          `UPDATE task_graph
+           SET status = 'pending', assigned_to = NULL, started_at = NULL
+           WHERE id = ?`,
+        ).run(task.id);
+        db.raw.prepare("DELETE FROM kv WHERE key = ?").run(`orchestrator.task_lease.${task.id}`);
+        logger.warn("[ORCHESTRATION] Released stale self-assigned task after runtime restart.", {
+          taskId: task.id,
+          ageMs,
+          timeoutMs,
+        });
+      }
+    }
+  } catch (error) {
+    logger.warn(
+      `[ORCHESTRATION] Startup self-assignment recovery skipped: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
   // Recover the latest substantial creator request after a restart.
   if (!db.getKV("creator_task_active")) {
     try {
