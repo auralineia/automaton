@@ -2829,8 +2829,8 @@ Model: ${ctx.inference.getDefaultModel()}
         const { createGoal } = await import("../orchestration/task-graph.js");
         const { getActiveGoals } = await import("../state/database.js");
 
-        const title = (args.title as string).trim();
-        const description = (args.description as string).trim();
+        const title = typeof args.title === "string" ? args.title.trim() : "";
+        const description = typeof args.description === "string" ? args.description.trim() : "";
         const strategy =
           typeof args.strategy === "string" ? args.strategy.trim() : undefined;
 
@@ -2854,10 +2854,20 @@ Model: ${ctx.inference.getDefaultModel()}
           );
         }
 
-        // Cap active goals to prevent accumulation.
-        // Only 1 goal at a time — the orchestrator processes goals sequentially.
+        // Keep autonomous goals sequential, but never block a creator command
+        // behind an unrelated autonomous goal. Creator tasks are executed directly
+        // with the regular tool surface instead of creating a second orchestrator goal.
         if (activeGoals.length >= 1) {
           const current = activeGoals[0];
+          if (ctx.inputSource === "creator") {
+            return (
+              `Creator command received while an autonomous goal is active:\n` +
+              `"${current.title}" (id: ${current.id})\n\n` +
+              `Do NOT create another goal. Execute the creator's requested work directly ` +
+              `using the available tools in this turn. Do not call create_goal again unless ` +
+              `the creator explicitly asks for a separate queued goal.`
+            );
+          }
           return (
             `BLOCKED: A goal is already being processed by the orchestrator and worker agents:\n` +
             `"${current.title}" (id: ${current.id})\n\n` +
