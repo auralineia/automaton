@@ -158,9 +158,18 @@ function resolveAndValidatePath(filePath: string): string | null {
 export function isProtectedFile(filePath: string): boolean {
   const resolved = path.resolve(filePath);
 
-  // Check against protected file patterns using path-segment matching
+  // Check against protected file patterns using path-segment matching.
+  // package.json is protected ONLY at the automaton runtime root; application
+  // projects created underneath the sandbox may have their own package.json.
   for (const pattern of PROTECTED_FILES) {
     const patternResolved = path.resolve(pattern);
+
+    if (pattern === "package.json") {
+      // Do not apply the generic suffix rule to package.json.
+      if (resolved === patternResolved) return true;
+      continue;
+    }
+
     // Exact match on resolved paths
     if (resolved === patternResolved) return true;
     // Match by path suffix: the resolved path ends with /pattern
