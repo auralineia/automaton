@@ -24,7 +24,121 @@ const DASHBOARD_HTML = String.raw`<!doctype html>
 .bottom-panel{max-width:1500px;margin:18px auto 0;display:grid;grid-template-columns:1fr 1.35fr;gap:18px;padding:0 22px 28px}.panel-card{border:1px solid rgba(255,255,255,.09);background:linear-gradient(180deg,rgba(19,23,30,.94),rgba(9,12,17,.96));border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.25);padding:16px}.panel-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:13px}.panel-heading span{color:#707986;font-size:9px;letter-spacing:.11em}.feed,.chat-feed{max-height:245px;overflow:auto}.feed-row{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;padding:10px;border:1px solid rgba(255,255,255,.05);border-radius:11px;margin-bottom:7px}.feed-dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan)}.feed-dot.bad{background:var(--red);box-shadow:0 0 10px var(--red)}.feed-row b{font-size:11px}.feed-row small{display:block;color:#6f7782;font-size:9px;margin-top:3px}.feed-row>strong{font-size:9px;color:#aeb6c2}
 .chat-feed{display:flex;flex-direction:column;gap:10px;padding-right:4px}.chat-empty{color:#6f7784;text-align:center;padding:22px;font-size:11px}.chat-item{padding:9px 2px}.chat-meta{display:flex;justify-content:space-between;color:#6e7784;font-size:8px;text-transform:uppercase;letter-spacing:.08em}.chat-user,.chat-agent{margin-top:6px;padding:9px 11px;border-radius:12px;line-height:1.45;font-size:11px;white-space:pre-wrap;word-break:break-word}.chat-user{background:rgba(227,183,47,.08);border:1px solid rgba(227,183,47,.16)}.chat-agent{background:rgba(83,240,207,.06);border:1px solid rgba(83,240,207,.12);color:#d7e7e4}.agent-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--cyan);margin-right:7px;box-shadow:0 0 8px var(--cyan)}.chat-form{display:grid;grid-template-columns:1fr auto;gap:9px;margin-top:10px}.chat-form textarea{width:100%;resize:none;min-height:44px;max-height:120px;padding:12px 13px;color:#ecf0f3;background:#0a0d12;border:1px solid rgba(255,255,255,.1);border-radius:12px;outline:none}.chat-form button{border:0;border-radius:12px;padding:0 15px;background:linear-gradient(135deg,#e3b72f,#b88d1e);color:#101217;font-weight:800;cursor:pointer}.chat-form button:disabled{opacity:.55}.chat-form button b{font-size:17px;margin-left:5px}.chat-hint{color:#5f6874;font-size:9px;margin-top:8px}.mobile-metrics{display:none}
 @media(max-width:900px){.back-wall{height:360px}.floor{height:410px}.desk{transform:scale(.7) translateZ(25px)}.agent-left-top{left:2%;top:10%}.agent-right-top{right:2%;top:10%}.agent-left-bottom{left:-2%;bottom:6%}.agent-right-bottom{right:-2%;bottom:6%}.center-console{transform:translate(-50%,-50%) translateZ(32px) scale(.82)}.bottom-panel{grid-template-columns:1fr}}
-@media(max-width:620px){.room-header{padding:0 13px;height:56px}.tiny{display:none}.ops-room{padding:10px 8px}.back-wall{height:300px}.main-screen{width:68%;left:16%;height:195px;top:58px;padding:13px 14px}.screen-value{font-size:36px;margin-top:17px}.screen-chart{height:50px}.side-screen{display:none}.floor{height:360px;transform:perspective(850px) rotateX(53deg) scale(.97)}.desk{transform:scale(.53) translateZ(25px)}.center-console{transform:translate(-50%,-50%) translateZ(30px) scale(.68)}.floor-caption{font-size:7px;bottom:15px;white-space:nowrap}.bottom-panel{padding:0 8px 18px;gap:10px}.panel-card{padding:12px}.feed,.chat-feed{max-height:210px}.chat-form{grid-template-columns:1fr 76px}.chat-form button{padding:0 10px;font-size:0}.chat-form button b{font-size:17px}.mobile-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;padding:0 8px 16px}.mobile-metrics>div{border:1px solid rgba(255,255,255,.08);background:#0c1016;border-radius:12px;padding:9px}.mobile-metrics span{display:block;font-size:8px;color:#68717d;letter-spacing:.12em}.mobile-metrics b{display:block;margin-top:4px;font-size:13px}}</style>
+@media(max-width:620px){.room-header{padding:0 13px;height:56px}.tiny{display:none}.ops-room{padding:10px 8px}.back-wall{height:300px}.main-screen{width:68%;left:16%;height:195px;top:58px;padding:13px 14px}.screen-value{font-size:36px;margin-top:17px}.screen-chart{height:50px}.side-screen{display:none}.floor{height:360px;transform:perspective(850px) rotateX(53deg) scale(.97)}.desk{transform:scale(.53) translateZ(25px)}.center-console{transform:translate(-50%,-50%) translateZ(30px) scale(.68)}.floor-caption{font-size:7px;bottom:15px;white-space:nowrap}.bottom-panel{padding:0 8px 18px;gap:10px}.panel-card{padding:12px}.feed,.chat-feed{max-height:210px}.chat-form{grid-template-columns:1fr 76px}.chat-form button{padding:0 10px;font-size:0}.chat-form button b{font-size:17px}.mobile-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;padding:0 8px 16px}.mobile-metrics>div{border:1px solid rgba(255,255,255,.08);background:#0c1016;border-radius:12px;padding:9px}.mobile-metrics span{display:block;font-size:8px;color:#68717d;letter-spacing:.12em}.mobile-metrics b{display:block;margin-top:4px;font-size:13px}}
+/* ─────────────────────────────────────────────────────────────
+   RITTY 3D OPERATIONS FLOOR — immersive office
+   Pure CSS/HTML so it works on Railway without extra assets.
+   ───────────────────────────────────────────────────────────── */
+body{background:#05070a}
+.ops-room{max-width:1540px;padding-top:18px}
+.back-wall{height:390px;background:linear-gradient(180deg,#0b1118 0%,#111b24 55%,#071016 100%);border-color:rgba(96,214,255,.22);box-shadow:inset 0 -80px 120px rgba(0,0,0,.55)}
+.back-wall:before,.back-wall:after{width:24%;opacity:.7;background:linear-gradient(90deg,rgba(1,5,10,.96),rgba(20,40,52,.18),rgba(1,5,10,.96))}
+.wall-topline{color:#7c96a7}
+.wall-grid-lines{background:linear-gradient(rgba(99,219,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(99,219,255,.025) 1px,transparent 1px);background-size:48px 48px}
+.wall-screen{border-color:#2b6676;background:linear-gradient(145deg,#071319,#071f28);box-shadow:0 0 0 1px rgba(103,225,255,.12),0 24px 45px rgba(0,0,0,.48),inset 0 0 30px rgba(67,222,255,.08)}
+.main-screen{height:246px;top:73px;padding:18px 22px}
+.screen-value{color:#67efff;text-shadow:0 0 28px rgba(103,239,255,.38)}
+.screen-chart i{background:linear-gradient(to top,rgba(67,222,255,.05),rgba(67,222,255,.72))}
+.side-screen strong{color:#74e8ff}
+
+/* Main 3D viewport */
+.floor{height:545px;margin-top:-2px;position:relative;overflow:hidden;
+  background:
+    radial-gradient(ellipse at 50% 54%,rgba(60,227,255,.12),transparent 33%),
+    linear-gradient(145deg,#27313a 0%,#1c242b 48%,#12191f 100%);
+  border:1px solid rgba(100,221,255,.28);
+  box-shadow:0 0 0 4px rgba(76,210,255,.04),0 35px 90px rgba(0,0,0,.62);
+  transform:perspective(1200px) rotateX(50deg) scale(.97);
+  transform-origin:top center;transform-style:preserve-3d;
+}
+.floor:before{content:"";position:absolute;inset:-20%;
+  background:
+    linear-gradient(90deg,rgba(91,226,255,.08) 1px,transparent 1px),
+    linear-gradient(rgba(91,226,255,.06) 1px,transparent 1px);
+  background-size:52px 52px;transform:translateZ(0);pointer-events:none}
+.floor:after{content:"";position:absolute;left:7%;right:7%;top:10%;height:2px;background:linear-gradient(90deg,transparent,rgba(99,228,255,.7),transparent);box-shadow:0 0 24px rgba(99,228,255,.45);transform:translateZ(2px)}
+
+.office-shell{position:absolute;inset:0;transform-style:preserve-3d}
+.room-back, .room-side, .room-window, .ceiling-beam{position:absolute;transform-style:preserve-3d;pointer-events:none}
+.room-back{left:6%;right:6%;top:7%;height:62%;background:linear-gradient(180deg,#0a1219,#101d25);border:1px solid rgba(113,224,255,.16);transform:translateZ(14px);box-shadow:inset 0 0 80px rgba(0,0,0,.42)}
+.room-back:after{content:"";position:absolute;inset:16px;background:linear-gradient(180deg,rgba(85,219,255,.025),transparent);border:1px solid rgba(85,219,255,.05)}
+.room-side{width:12%;height:62%;top:7%;background:linear-gradient(165deg,#101a22,#050a0e);border:1px solid rgba(94,204,234,.1);transform:translateZ(15px) rotateY(62deg);transform-origin:left center}
+.room-side.left{left:0}.room-side.right{right:0;transform-origin:right center;transform:translateZ(15px) rotateY(-62deg)}
+.room-window{left:20%;right:20%;top:10%;height:38%;background:linear-gradient(180deg,#061a2a,#071e2d 55%,#030b12);border:1px solid rgba(107,223,255,.25);box-shadow:inset 0 0 55px rgba(71,202,255,.12),0 0 24px rgba(71,202,255,.08);transform:translateZ(23px)}
+.room-window:before{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 0 38%,rgba(150,236,255,.12) 40%,transparent 42%),linear-gradient(90deg,transparent 0 49%,rgba(110,222,255,.16) 50%,transparent 51%)}
+.room-window:after{content:"RITTY  //  AUTONOMOUS OPERATIONS";position:absolute;right:16px;bottom:11px;color:rgba(130,224,255,.55);font-size:8px;letter-spacing:.15em}
+.ceiling-beam{top:7%;height:4px;width:30%;background:linear-gradient(90deg,transparent,#62e7ff,transparent);box-shadow:0 0 22px rgba(98,231,255,.6);transform:translateZ(44px)}
+.ceiling-beam.b1{left:11%}.ceiling-beam.b2{left:35%;width:30%}.ceiling-beam.b3{right:11%}
+
+.office-title{position:absolute;left:50%;top:8%;transform:translate(-50%,-50%) translateZ(38px);color:#d8f8ff;font-size:18px;font-weight:900;letter-spacing:.25em;text-shadow:0 0 24px rgba(100,231,255,.35);white-space:nowrap}
+.office-subtitle{position:absolute;left:50%;top:12%;transform:translate(-50%,-50%) translateZ(35px);font-size:7px;letter-spacing:.32em;color:#5d8999;white-space:nowrap}
+
+.holo-ring{position:absolute;left:50%;top:43%;width:310px;height:180px;transform:translate(-50%,-50%) translateZ(48px);border:1px solid rgba(98,236,255,.16);border-radius:50%;box-shadow:0 0 35px rgba(98,236,255,.08);animation:holoFloat 5s ease-in-out infinite}
+.holo-ring:before,.holo-ring:after{content:"";position:absolute;inset:19px;border:1px solid rgba(113,224,255,.12);border-radius:50%;transform:rotateX(62deg) rotateZ(18deg)}
+.holo-ring:after{inset:38px;transform:rotateX(68deg) rotateZ(-21deg)}
+.holo-core{position:absolute;left:50%;top:38%;width:85px;height:85px;transform:translate(-50%,-50%) translateZ(78px);border-radius:42% 58% 52% 48%/54% 42% 58% 46%;background:radial-gradient(circle at 35% 30%,#c8fbff 0,#62e7ff 18%,#14728a 55%,rgba(5,20,25,.1) 78%);box-shadow:0 0 25px rgba(98,231,255,.7),0 0 85px rgba(98,231,255,.25);animation:corePulse 3.8s ease-in-out infinite;transform-style:preserve-3d}
+.holo-core:before{content:"";position:absolute;inset:-15px;border:1px solid rgba(129,237,255,.5);border-radius:50%;transform:rotateX(69deg) rotateY(14deg);box-shadow:0 0 18px rgba(129,237,255,.35)}
+.holo-core:after{content:"";position:absolute;left:50%;top:50%;width:10px;height:10px;transform:translate(-50%,-50%);border-radius:50%;background:#efffff;box-shadow:0 0 20px 8px rgba(155,245,255,.65)}
+
+.workstation{position:absolute;width:235px;height:140px;transform-style:preserve-3d}
+.ws-left{left:7%;top:40%;transform:translateZ(52px) rotateY(8deg)}
+.ws-right{right:7%;top:40%;transform:translateZ(52px) rotateY(-8deg)}
+.ws-back-left{left:10%;bottom:4%;transform:translateZ(35px) rotateY(5deg) scale(.9)}
+.ws-back-right{right:10%;bottom:4%;transform:translateZ(35px) rotateY(-5deg) scale(.9)}
+.ws-desk{position:absolute;left:0;right:0;bottom:0;height:62px;background:linear-gradient(150deg,#39434a,#161d23);border:1px solid rgba(145,214,228,.22);box-shadow:0 12px 0 #0a0f14,0 24px 28px rgba(0,0,0,.48);transform:translateZ(10px)}
+.ws-top{position:absolute;left:35px;right:35px;top:6px;height:13px;background:linear-gradient(180deg,#5f737b,#263238);border:1px solid rgba(171,230,239,.18);transform:translateZ(22px);box-shadow:0 8px 0 #1b252b}
+.ws-monitor{position:absolute;left:54px;top:-42px;width:126px;height:64px;background:linear-gradient(155deg,#061419,#081e24);border:2px solid #2f7e91;box-shadow:0 0 0 1px rgba(102,231,255,.12),0 0 24px rgba(102,231,255,.08);transform:translateZ(34px);padding:9px 10px}
+.ws-monitor b{display:block;font-size:9px;letter-spacing:.12em;color:#d4f6ff}
+.ws-monitor small{display:block;margin-top:11px;color:#5fe6ff;font-size:8px}
+.ws-monitor i{position:absolute;left:7px;right:7px;top:36px;height:1px;background:rgba(102,231,255,.72);box-shadow:0 0 8px rgba(102,231,255,.9);animation:scanMonitor 2.4s ease-in-out infinite}
+.ws-chair{position:absolute;left:84px;bottom:-37px;width:62px;height:36px;background:#11171c;border:1px solid #38444b;border-radius:10px 10px 4px 4px;transform:translateZ(9px)}
+.bot{position:absolute;left:100px;top:51px;width:31px;height:42px;transform:translateZ(36px);transform-style:preserve-3d}
+.bot-head{position:absolute;left:2px;top:0;width:27px;height:27px;border-radius:42%;background:linear-gradient(145deg,#b9fbff,#1b7688);border:1px solid rgba(190,255,255,.52);box-shadow:0 0 24px rgba(98,231,255,.36)}
+.bot-head:before{content:"";position:absolute;left:6px;right:6px;top:10px;height:4px;border-radius:999px;background:#041115;box-shadow:0 0 7px #63eaff}
+.bot-head:after{content:"";position:absolute;left:11px;top:-10px;width:5px;height:10px;border-radius:999px;background:#63eaff;box-shadow:0 0 12px #63eaff}
+.bot-body{position:absolute;left:5px;top:26px;width:21px;height:17px;border-radius:6px;background:linear-gradient(145deg,#6bcddd,#143842);border:1px solid rgba(181,247,255,.25);box-shadow:0 7px 13px rgba(0,0,0,.25)}
+.bot-body:after{content:"";position:absolute;left:8px;top:5px;width:5px;height:5px;border-radius:50%;background:#bffbff;box-shadow:0 0 9px #bffbff}
+.data-stream{position:absolute;right:30px;top:17%;width:120px;height:180px;transform:translateZ(40px);opacity:.5}
+.data-stream span{display:block;height:2px;margin:12px 0;background:linear-gradient(90deg,transparent,#66e8ff);animation:dataFlow 2.8s linear infinite}
+.data-stream span:nth-child(2){width:82%;margin-left:18%}.data-stream span:nth-child(3){width:68%}.data-stream span:nth-child(4){width:92%;margin-left:8%}.data-stream span:nth-child(5){width:57%;margin-left:31%}.data-stream span:nth-child(6){width:76%}
+
+.rack{position:absolute;width:82px;height:160px;bottom:11%;transform:translateZ(39px);background:linear-gradient(145deg,#11191f,#05090d);border:1px solid rgba(122,204,220,.2);box-shadow:14px 18px 26px rgba(0,0,0,.4)}
+.rack.left{left:2%}.rack.right{right:2%}
+.rack h4{margin:9px 8px 5px;font-size:7px;color:#6e98a4;letter-spacing:.14em}
+.rack .rack-unit{height:16px;margin:5px 7px;border:1px solid rgba(93,219,255,.11);background:#091117;position:relative}
+.rack .rack-unit:after{content:"";position:absolute;right:7px;top:6px;width:4px;height:4px;border-radius:50%;background:#60eaff;box-shadow:0 0 8px #60eaff}
+.rack .rack-unit i{display:block;width:38%;height:1px;margin:7px 0 0 6px;background:#345764}
+
+.stat-puck{position:absolute;padding:7px 10px;border:1px solid rgba(117,224,255,.16);background:rgba(4,11,15,.72);border-radius:999px;backdrop-filter:blur(8px);font-size:8px;letter-spacing:.08em;color:#7ea4b1;transform:translateZ(52px)}
+.p1{left:29%;bottom:15%}.p2{right:29%;bottom:15%}
+.stat-puck b{color:#d5f8ff;margin-left:5px}
+
+.floor-caption{bottom:18px;background:rgba(2,8,11,.82);border-color:rgba(113,224,255,.18)}
+.pill-live{color:#62eaff}.pill-live i{background:#62eaff;box-shadow:0 0 10px #62eaff}
+
+@keyframes holoFloat{0%,100%{transform:translate(-50%,-50%) translateZ(48px) rotateZ(-2deg)}50%{transform:translate(-50%,-52%) translateZ(56px) rotateZ(2deg)}}
+@keyframes corePulse{0%,100%{filter:saturate(.95);transform:translate(-50%,-50%) translateZ(78px) scale(.93) rotate(0)}50%{filter:saturate(1.35);transform:translate(-50%,-52%) translateZ(88px) scale(1.08) rotate(10deg)}}
+@keyframes scanMonitor{0%,100%{top:35px;opacity:.45}50%{top:53px;opacity:1}}
+@keyframes dataFlow{0%{transform:translateX(-18px);opacity:0}25%{opacity:.9}100%{transform:translateX(30px);opacity:0}}
+
+@media(max-width:900px){
+  .back-wall{height:350px}.floor{height:470px}
+  .workstation{transform:scale(.78) translateZ(44px)}.ws-right{right:-1%}.ws-left{left:-1%}
+  .ws-back-left{left:0}.ws-back-right{right:0}
+  .rack{transform:translateZ(31px) scale(.8)}.data-stream{right:8px}
+}
+@media(max-width:620px){
+  .back-wall{height:280px}.main-screen{width:70%;left:15%;height:180px;top:56px}.screen-value{font-size:34px}
+  .floor{height:370px;transform:perspective(900px) rotateX(54deg) scale(.98)}
+  .office-title{font-size:12px;top:8%}.office-subtitle{font-size:6px}
+  .workstation{transform:scale(.55) translateZ(38px)}.ws-left{left:-8%;top:41%}.ws-right{right:-8%;top:41%}
+  .ws-back-left{left:-3%;bottom:0}.ws-back-right{right:-3%;bottom:0}
+  .holo-ring{width:250px;height:150px}.holo-core{width:70px;height:70px}
+  .rack{display:none}.data-stream{display:none}.stat-puck{font-size:7px}.p1{left:18%;bottom:19%}.p2{right:18%;bottom:19%}
+  .floor-caption{font-size:7px}
+}
+
+</style>
 </head>
 <body>
 <div class="command-room">
@@ -47,13 +161,51 @@ const DASHBOARD_HTML = String.raw`<!doctype html>
       <div class="wall-grid-lines"></div>
     </div>
     <div class="floor">
-      <div class="floor-border"></div><div class="floor-glow"></div>
-      <div class="desk agent agent-left-top"><div class="agent-screen"><span class="scan"></span><b>WORKER A</b><small id="agentA">IDLE</small></div><div class="desk-body"></div><div class="chair"></div><div class="agent-head"></div></div>
-      <div class="desk agent agent-right-top"><div class="agent-screen"><span class="scan"></span><b>WORKER B</b><small id="agentB">IDLE</small></div><div class="desk-body"></div><div class="chair"></div><div class="agent-head violet"></div></div>
-      <div class="desk agent agent-left-bottom"><div class="agent-screen"><span class="scan"></span><b>WORKER C</b><small id="agentC">IDLE</small></div><div class="desk-body"></div><div class="chair"></div><div class="agent-head blue"></div></div>
-      <div class="desk agent agent-right-bottom"><div class="agent-screen"><span class="scan"></span><b>WORKER D</b><small id="agentD">IDLE</small></div><div class="desk-body"></div><div class="chair"></div><div class="agent-head gold"></div></div>
-      <div class="center-console"><div class="console-screen"><div class="console-brand">RITTY</div><div class="console-line"><span>STATUS</span><b id="consoleState">ONLINE</b></div><div class="console-line"><span>SKILLS</span><b id="consoleSkills">0</b></div><div class="console-line"><span>HEARTBEATS</span><b id="consoleHB">0</b></div></div><div class="console-base"></div></div>
-      <div class="floor-caption"><span>OPERATIONS</span><span class="pill-live"><i></i> LIVE</span><span id="floorMeta">0 cycles · 0 skills</span></div>
+      <div class="floor-border"></div>
+      <div class="office-shell">
+        <div class="room-back"></div>
+        <div class="room-side left"></div><div class="room-side right"></div>
+        <div class="room-window"></div>
+        <div class="ceiling-beam b1"></div><div class="ceiling-beam b2"></div><div class="ceiling-beam b3"></div>
+        <div class="office-title">RITTY OPERATIONS FLOOR</div>
+        <div class="office-subtitle">AUTONOMOUS INTELLIGENCE · LIVE CONTROL</div>
+
+        <div class="holo-ring"></div><div class="holo-core"></div>
+
+        <div class="workstation ws-left">
+          <div class="ws-monitor"><i></i><b>WORKER A</b><small id="agentA">IDLE</small></div>
+          <div class="ws-top"></div><div class="ws-desk"></div><div class="ws-chair"></div>
+          <div class="bot"><div class="bot-head"></div><div class="bot-body"></div></div>
+        </div>
+
+        <div class="workstation ws-right">
+          <div class="ws-monitor"><i></i><b>WORKER B</b><small id="agentB">IDLE</small></div>
+          <div class="ws-top"></div><div class="ws-desk"></div><div class="ws-chair"></div>
+          <div class="bot"><div class="bot-head"></div><div class="bot-body"></div></div>
+        </div>
+
+        <div class="workstation ws-back-left">
+          <div class="ws-monitor"><i></i><b>WORKER C</b><small id="agentC">IDLE</small></div>
+          <div class="ws-top"></div><div class="ws-desk"></div><div class="ws-chair"></div>
+          <div class="bot"><div class="bot-head"></div><div class="bot-body"></div></div>
+        </div>
+
+        <div class="workstation ws-back-right">
+          <div class="ws-monitor"><i></i><b>WORKER D</b><small id="agentD">IDLE</small></div>
+          <div class="ws-top"></div><div class="ws-desk"></div><div class="ws-chair"></div>
+          <div class="bot"><div class="bot-head"></div><div class="bot-body"></div></div>
+        </div>
+
+        <div class="rack left"><h4>NODE A</h4><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div></div>
+        <div class="rack right"><h4>NODE B</h4><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div></div>
+
+        <div class="data-stream"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+
+        <div class="stat-puck p1">RUNTIME <b id="consoleState">ONLINE</b></div>
+        <div class="stat-puck p2">SKILLS <b id="consoleSkills">0</b> · HB <b id="consoleHB">0</b></div>
+
+        <div class="floor-caption"><span>OPERATIONS</span><span class="pill-live"><i></i> LIVE</span><span id="floorMeta">0 cycles · 0 skills</span></div>
+      </div>
     </div>
   </main>
   <section class="bottom-panel">
