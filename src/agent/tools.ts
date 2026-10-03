@@ -3435,6 +3435,29 @@ export async function executeTool(
       };
     }
 
+    // Creator turns are never allowed to spend a turn on maintenance/status
+    // checks or background-goal orchestration. Hard-block these targets here,
+    // not only in the prompt, so the model must choose a concrete action.
+    if (context.inputSource === "creator" && new Set([
+      "check_credits",
+      "check_usdc_balance",
+      "orchestrator_status",
+      "list_goals",
+      "get_plan",
+      "create_goal",
+      "sleep",
+    ]).has(targetName)) {
+      return {
+        id: ulid(),
+        name: toolName,
+        arguments: args,
+        result: "",
+        durationMs: Date.now() - startTime,
+        error:
+          `Creator task cannot call maintenance/orchestration tool "${targetName}". Execute the requested work directly.`,
+      };
+    }
+
     const delegated = await executeTool(
       targetName,
       targetArgs,
