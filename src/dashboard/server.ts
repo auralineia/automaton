@@ -8,263 +8,108 @@ const DASHBOARD_HTML = String.raw`<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#07080c" />
 <title>RITTY / Command Center</title>
-<style>
-:root{
-  --bg:#07080c;--panel:rgba(15,18,26,.82);--panel2:rgba(19,23,32,.72);--line:rgba(255,255,255,.08);
-  --text:#f5f7fb;--muted:#8d96a8;--cyan:#56f0d0;--violet:#9d8cff;--danger:#ff6f91;--amber:#ffc766;
-  --shadow:0 20px 60px rgba(0,0,0,.28);--radius:22px;
-}
-*{box-sizing:border-box}html{background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif}
-body{margin:0;min-height:100vh;background:
-radial-gradient(900px 500px at 15% -10%,rgba(86,240,208,.13),transparent 55%),
-radial-gradient(800px 420px at 90% 0%,rgba(157,140,255,.14),transparent 55%),var(--bg)}
-button{font:inherit;color:inherit}.app{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
-.sidebar{position:sticky;top:0;height:100vh;padding:22px 16px;border-right:1px solid var(--line);background:rgba(7,8,12,.68);backdrop-filter:blur(22px)}
-.brand{padding:12px 12px 22px}.eyebrow{font-size:11px;letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
-.brand h1{margin:7px 0 0;font-size:26px;letter-spacing:-.04em}.brand h1 span{color:var(--cyan)}
-.nav{display:grid;gap:6px}.nav a{display:flex;gap:10px;align-items:center;padding:11px 12px;border-radius:13px;color:#b8bfcc;text-decoration:none;font-size:14px}.nav a:hover{background:rgba(255,255,255,.045);color:#fff}
-.side-footer{position:absolute;left:16px;right:16px;bottom:18px}.connection{padding:12px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.025)}
-.dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:var(--amber);box-shadow:0 0 18px currentColor}.dot.ok{background:var(--cyan)}.dot.bad{background:var(--danger)}
-.main{padding:22px 24px 110px;max-width:1500px;width:100%;margin:auto}.topbar{display:flex;justify-content:space-between;gap:14px;align-items:center;margin-bottom:18px}
-.topbar h2{margin:0;font-size:22px;letter-spacing:-.03em}.status-line{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:13px}
-.refresh{border:1px solid var(--line);background:rgba(255,255,255,.035);border-radius:12px;padding:9px 12px;cursor:pointer}.refresh:active{transform:scale(.98)}
-.hero{display:grid;grid-template-columns:1.4fr .8fr;gap:16px;margin-bottom:16px}.hero-card,.panel{border:1px solid var(--line);background:linear-gradient(180deg,rgba(21,25,35,.88),rgba(11,13,19,.88));box-shadow:var(--shadow);border-radius:var(--radius)}
-.hero-card{padding:24px;position:relative;overflow:hidden}.hero-card:after{content:"";position:absolute;inset:auto -20% -60% 45%;height:220px;background:radial-gradient(circle,rgba(86,240,208,.16),transparent 65%);pointer-events:none}
-.hero h3{margin:0;font-size:38px;letter-spacing:-.055em}.hero p{color:var(--muted);margin:7px 0 18px;max-width:650px;line-height:1.5}.pillrow{display:flex;gap:8px;flex-wrap:wrap}.pill{font-size:12px;color:#cbd2dc;border:1px solid var(--line);padding:7px 10px;border-radius:999px;background:rgba(255,255,255,.025)}.pill.live{color:#071412;background:var(--cyan);border-color:transparent;font-weight:700}
-.orbit{min-height:190px;display:grid;place-items:center;position:relative}.orb{width:130px;height:130px;border-radius:50%;background:
-radial-gradient(circle at 35% 32%,#fff,rgba(255,255,255,.7) 7%,rgba(86,240,208,.65) 20%,rgba(86,240,208,.12) 58%,transparent 72%);
-filter:drop-shadow(0 0 35px rgba(86,240,208,.33));animation:breathe 4.8s ease-in-out infinite}.orb:before,.orb:after{content:"";position:absolute;inset:24%;border:1px solid rgba(157,140,255,.55);border-radius:48%;transform:rotate(38deg);animation:spin 11s linear infinite}.orb:after{inset:20%;transform:rotate(-52deg);border-color:rgba(86,240,208,.42);animation-direction:reverse;animation-duration:15s}@keyframes breathe{50%{transform:scale(1.08)}}@keyframes spin{to{transform:rotate(398deg)}}
-.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}.metric{padding:18px}.metric .label{font-size:12px;color:var(--muted)}.metric .value{font-size:28px;font-weight:700;letter-spacing:-.04em;margin-top:8px}.metric .sub{font-size:11px;color:#788294;margin-top:5px}
-.two{display:grid;grid-template-columns:1.25fr .95fr;gap:16px;margin-bottom:16px}.panel{padding:18px}.panel-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:13px}.panel-head h4{margin:0;font-size:15px}.panel-head span{font-size:11px;color:var(--muted)}
-.list{display:grid;gap:7px}.row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:11px 10px;border:1px solid rgba(255,255,255,.055);border-radius:14px;background:rgba(255,255,255,.018)}
-.row .name{font-size:13px}.row .meta{font-size:11px;color:var(--muted)}.row .right{font-size:11px;color:#aab3c2}.oktxt{color:var(--cyan)}.errtxt{color:var(--danger)}.muted{color:var(--muted)}
-.columns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}.skill{padding:11px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.055);background:rgba(255,255,255,.02)}.skill strong{font-size:13px}.skill p{margin:4px 0 0;font-size:11px;line-height:1.4;color:var(--muted)}
-.note{font-size:11px;color:var(--muted);padding:10px 2px}.footer{margin-top:16px;color:#687386;font-size:11px;text-align:center}
-.mobile-nav{display:none}
-@media(max-width:1000px){.hero{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}.two,.columns{grid-template-columns:1fr}.orbit{min-height:150px}}
-@media(max-width:720px){.app{display:block}.sidebar{display:none}.main{padding:14px 12px 96px}.topbar h2{font-size:18px}.hero-card{padding:19px}.hero h3{font-size:31px}.grid{gap:9px}.metric{padding:15px}.metric .value{font-size:24px}.panel{padding:14px}.mobile-nav{position:fixed;z-index:50;left:10px;right:10px;bottom:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:7px;border:1px solid var(--line);border-radius:18px;background:rgba(11,13,19,.92);backdrop-filter:blur(22px);box-shadow:var(--shadow)}.mobile-nav a{padding:8px 4px;text-align:center;color:#8f98a8;text-decoration:none;font-size:10px}.mobile-nav a.active{color:var(--cyan)}}
-
-/* 3D operations floor inspired by an isometric control room */
-.floor-wrap{margin:0 0 18px;overflow:hidden;border:1px solid rgba(244,190,67,.22);border-radius:24px;background:radial-gradient(ellipse at 50% 40%,rgba(38,48,61,.8),rgba(10,12,18,.98) 72%);box-shadow:0 24px 70px rgba(0,0,0,.38);position:relative}
-.floor-top{display:flex;justify-content:space-between;align-items:center;padding:17px 20px 0;position:relative;z-index:2}
-.floor-top h4{font-size:14px;margin:0;letter-spacing:.02em}.floor-top span{font-size:11px;color:var(--muted)}
-.floor-stage{height:330px;position:relative;perspective:1000px;display:grid;place-items:center;overflow:hidden}
-.floor-grid{position:absolute;width:min(650px,82vw);height:280px;transform:rotateX(57deg) rotateZ(-35deg);transform-style:preserve-3d;background:linear-gradient(90deg,rgba(239,188,62,.17) 1px,transparent 1px),linear-gradient(rgba(239,188,62,.13) 1px,transparent 1px),linear-gradient(145deg,#34343a,#20232a 65%,#292b31);background-size:34px 34px,34px 34px,100% 100%;border:3px solid #b68a25;box-shadow:0 0 0 5px rgba(225,176,51,.1),0 30px 30px rgba(0,0,0,.55);transform-style:preserve-3d}
-.floor-grid:before{content:"";position:absolute;inset:0;border:1px solid rgba(255,218,107,.4);transform:translateZ(10px);pointer-events:none}
-.floor-wall{position:absolute;left:0;right:0;top:0;height:12px;background:linear-gradient(90deg,#9a7625,#f4ce62,#a57b24);transform:translateZ(30px);box-shadow:0 0 16px rgba(239,190,60,.22)}
-.floor-console{position:absolute;left:50%;top:42%;width:38%;height:29%;transform:translate(-50%,-50%) translateZ(20px);background:linear-gradient(145deg,#555861,#292c35);border:2px solid #8c8e91;box-shadow:0 13px 0 #191b20,0 20px 22px #0008;border-radius:4px}
-.floor-console:before{content:"";position:absolute;left:8%;right:8%;top:10%;height:54%;background:linear-gradient(160deg,#182e2d,#071615);border:2px solid #b18b34;box-shadow:inset 0 0 22px rgba(50,255,194,.14)}
-.floor-console:after{content:"RITTY  /  LIVE OPERATIONS";position:absolute;top:23%;left:0;right:0;text-align:center;color:#65f2c9;font-size:clamp(7px,1vw,11px);font-weight:800;letter-spacing:.12em;transform:translateZ(2px)}
-.floor-desk{position:absolute;width:19%;height:17%;background:linear-gradient(145deg,#666a71,#383c44 65%,#292c33);border:1px solid #999a9c;box-shadow:0 8px 0 #22252b,0 12px 12px #0008;transform:translateZ(19px);border-radius:3px}
-.floor-desk:before{content:"";position:absolute;width:45%;height:52%;left:27%;top:-48%;background:linear-gradient(145deg,#29323a,#10151b);border:2px solid #b6a15e;box-shadow:0 0 12px rgba(89,239,202,.14);border-radius:2px}
-.floor-desk:after{content:"";position:absolute;left:42%;bottom:-10px;width:16%;height:10px;background:#777a80}
-.desk-a{left:13%;top:20%}.desk-b{right:13%;top:20%}.desk-c{left:13%;bottom:18%}.desk-d{right:13%;bottom:18%}
-.floor-status{position:absolute;left:50%;bottom:15px;transform:translateX(-50%);display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:95%;z-index:2}
-.floor-chip{font-size:10px;letter-spacing:.04em;color:#cbd3dc;padding:7px 10px;border:1px solid rgba(255,255,255,.1);background:rgba(8,10,14,.72);border-radius:999px;backdrop-filter:blur(10px)}
-.floor-chip b{color:#68f0ca;margin-right:5px}
-@media(max-width:720px){.floor-stage{height:255px}.floor-grid{width:83vw;height:205px}.floor-top{padding:14px 14px 0}.floor-status{bottom:9px;gap:5px}.floor-chip{font-size:9px;padding:6px 8px}}
-
-</style>
+<style>:root{--bg:#07090d;--gold:#e3b72f;--ink:#f3f4f6;--muted:#8e96a3;--cyan:#59f4d2;--purple:#9b8cff;--red:#ff5d79}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#07090d;color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif}body{overflow-x:hidden}
+.command-room{min-height:100vh;background:radial-gradient(900px 500px at 50% 8%,rgba(61,83,103,.18),transparent 60%),linear-gradient(#06080c,#0a0d12 48%,#080a0e)}
+.room-header{height:64px;display:flex;justify-content:space-between;align-items:center;padding:0 24px;border-bottom:1px solid rgba(229,190,52,.2);background:rgba(7,9,13,.92);position:sticky;top:0;z-index:30;backdrop-filter:blur(16px)}
+.room-brand{display:flex;gap:11px;align-items:center}.brand-mark{width:34px;height:34px;display:grid;place-items:center;border:1px solid rgba(227,183,47,.65);border-radius:8px;color:var(--gold);font-weight:900}.tiny{font-size:9px;letter-spacing:.18em;color:#7f8794}.room-brand strong{font-size:18px;letter-spacing:.08em}.room-status{display:flex;gap:9px;align-items:center;font-size:11px;letter-spacing:.12em;color:#b4bbc5}.sep{color:#4b5360}.dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:#f3b942;box-shadow:0 0 16px currentColor}.dot.ok{background:var(--cyan)}
+.ops-room{max-width:1500px;margin:0 auto;padding:20px 22px 12px}.back-wall{height:420px;position:relative;overflow:hidden;border:1px solid rgba(229,190,52,.22);border-bottom:none;background:linear-gradient(180deg,#171b21,#22272d 65%,#15181d);box-shadow:inset 0 0 100px rgba(0,0,0,.6)}
+.back-wall:before,.back-wall:after{content:"";position:absolute;top:0;bottom:0;width:18%;background:linear-gradient(90deg,rgba(8,10,14,.95),rgba(37,40,43,.2),rgba(8,10,14,.95));opacity:.7}.back-wall:before{left:0}.back-wall:after{right:0}
+.wall-topline{position:absolute;left:24px;right:24px;top:17px;display:flex;justify-content:space-between;font-size:10px;color:#a7afb8;letter-spacing:.14em}
+.wall-screen{position:absolute;background:linear-gradient(145deg,#0a1417,#0c2322);border:2px solid #aa8528;box-shadow:0 0 0 3px rgba(229,190,52,.08),0 15px 30px rgba(0,0,0,.4),inset 0 0 22px rgba(77,255,198,.08);border-radius:3px}.main-screen{width:54%;height:270px;left:23%;top:72px;padding:19px 22px}.screen-top,.screen-footer{display:flex;justify-content:space-between;color:#62eecb;font-size:10px;letter-spacing:.1em}.screen-value{font-size:54px;line-height:1;margin-top:27px;font-weight:800;color:#62f0ce}.screen-label{font-size:9px;color:#71817f;letter-spacing:.2em;margin-top:5px}.screen-chart{height:84px;display:flex;align-items:end;gap:5px;margin-top:17px;border-bottom:1px solid rgba(92,242,206,.2)}.screen-chart i{flex:1;background:linear-gradient(to top,rgba(45,226,183,.08),rgba(45,226,183,.6));height:40%;display:block}.screen-chart i:nth-child(1){height:20%}.screen-chart i:nth-child(2){height:42%}.screen-chart i:nth-child(3){height:31%}.screen-chart i:nth-child(4){height:59%}.screen-chart i:nth-child(5){height:45%}.screen-chart i:nth-child(6){height:71%}.screen-chart i:nth-child(7){height:61%}.screen-chart i:nth-child(8){height:86%}.screen-chart i:nth-child(9){height:76%}.screen-chart i:nth-child(10){height:92%}.screen-footer{margin-top:12px;color:#8fa5a1;letter-spacing:.02em}.screen-footer b{color:#e8edf0}.side-screen{width:18%;height:118px;top:146px;padding:15px 17px}.left-screen{left:2.5%}.right-screen{right:2.5%}.screen-title{color:#8b949e;font-size:9px;letter-spacing:.15em}.side-screen strong{display:block;font-size:25px;margin-top:14px;color:#e9c95f}.side-screen small{display:block;color:#687178;font-size:8px;margin-top:5px}.wall-grid-lines{position:absolute;inset:0;background:linear-gradient(rgba(229,190,52,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(229,190,52,.035) 1px,transparent 1px);background-size:44px 44px;pointer-events:none}
+.floor{height:500px;position:relative;margin-top:-2px;overflow:hidden;background:linear-gradient(145deg,#4d5054,#303339 55%,#3a3b3f);border:1px solid #9d7925;box-shadow:0 0 0 4px rgba(229,190,52,.06),0 35px 65px rgba(0,0,0,.55);transform:perspective(1000px) rotateX(52deg) scale(.97);transform-origin:top center;transform-style:preserve-3d}.floor:before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(239,196,75,.13) 1px,transparent 1px),linear-gradient(rgba(239,196,75,.1) 1px,transparent 1px);background-size:44px 44px}.floor-border{position:absolute;inset:0;border:3px solid rgba(227,183,47,.8);box-shadow:inset 0 0 0 8px rgba(0,0,0,.14)}.floor-glow{position:absolute;left:25%;right:25%;top:20%;height:42%;background:radial-gradient(ellipse,rgba(87,246,211,.08),transparent 70%)}
+.desk{position:absolute;width:230px;height:118px;transform:translateZ(25px);transform-style:preserve-3d}.desk-body{position:absolute;left:0;right:0;bottom:0;height:78px;background:linear-gradient(145deg,#65686b,#383a3e);border:2px solid #999b9d;box-shadow:0 11px 0 #23262a,0 20px 22px rgba(0,0,0,.38)}.agent-screen{position:absolute;z-index:2;left:55px;top:-42px;width:120px;height:65px;padding:9px 10px;background:linear-gradient(160deg,#10181a,#08110f);border:2px solid #b38c2b;box-shadow:0 0 18px rgba(78,255,213,.12);transform:translateZ(20px)}.agent-screen b{display:block;font-size:9px;color:#dce4e5;letter-spacing:.08em}.agent-screen small{display:block;font-size:8px;color:#64f0ca;margin-top:12px}.scan{position:absolute;left:7px;right:7px;top:28px;height:1px;background:rgba(92,246,205,.5);box-shadow:0 0 9px rgba(92,246,205,.7);animation:scan 2.6s ease-in-out infinite}@keyframes scan{50%{top:54px}}.chair{position:absolute;left:86px;bottom:-46px;width:57px;height:32px;background:#24272c;border:2px solid #484c52;transform:translateZ(10px)}.agent-head{position:absolute;left:104px;top:44px;width:27px;height:27px;border-radius:50%;background:linear-gradient(145deg,#57eecb,#113831);box-shadow:0 0 18px rgba(70,246,211,.32);transform:translateZ(38px)}.agent-head:after{content:"";position:absolute;left:4px;right:4px;top:14px;height:4px;background:#0b1615;border-radius:50%}.agent-head.violet{background:linear-gradient(145deg,#b69cff,#3b2d70);box-shadow:0 0 18px rgba(155,140,255,.3)}.agent-head.blue{background:linear-gradient(145deg,#69a8ff,#19355c)}.agent-head.gold{background:linear-gradient(145deg,#f1d069,#5b4310)}.agent-left-top{left:11%;top:13%}.agent-right-top{right:11%;top:13%}.agent-left-bottom{left:7%;bottom:9%}.agent-right-bottom{right:7%;bottom:9%}
+.center-console{position:absolute;left:50%;top:39%;width:290px;height:165px;transform:translate(-50%,-50%) translateZ(34px);transform-style:preserve-3d}.console-screen{position:absolute;left:33px;right:33px;top:0;height:102px;background:linear-gradient(160deg,#081716,#102c29);border:2px solid #b18b2f;box-shadow:inset 0 0 35px rgba(69,241,203,.1),0 12px 19px rgba(0,0,0,.42);padding:16px}.console-brand{font-size:18px;font-weight:900;letter-spacing:.18em;color:#68f0cc;margin-bottom:9px}.console-line{display:flex;justify-content:space-between;font-size:9px;color:#8da09d;margin-top:7px}.console-line b{color:#e7c95f}.console-base{position:absolute;left:10px;right:10px;bottom:0;height:52px;background:linear-gradient(145deg,#6b6d70,#303338);border:2px solid #919396;box-shadow:0 10px 0 #22252a,0 16px 20px rgba(0,0,0,.5)}
+.floor-caption{position:absolute;left:50%;bottom:25px;transform:translateX(-50%) translateZ(38px);display:flex;align-items:center;gap:11px;padding:9px 14px;border:1px solid rgba(255,255,255,.14);border-radius:99px;background:rgba(8,10,14,.74);backdrop-filter:blur(10px);font-size:9px;letter-spacing:.1em;color:#b7bec6}.pill-live{color:#62f0ce}.pill-live i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#62f0ce;box-shadow:0 0 10px #62f0ce;margin-right:4px}
+.bottom-panel{max-width:1500px;margin:18px auto 0;display:grid;grid-template-columns:1fr 1.35fr;gap:18px;padding:0 22px 28px}.panel-card{border:1px solid rgba(255,255,255,.09);background:linear-gradient(180deg,rgba(19,23,30,.94),rgba(9,12,17,.96));border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.25);padding:16px}.panel-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:13px}.panel-heading span{color:#707986;font-size:9px;letter-spacing:.11em}.feed,.chat-feed{max-height:245px;overflow:auto}.feed-row{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;padding:10px;border:1px solid rgba(255,255,255,.05);border-radius:11px;margin-bottom:7px}.feed-dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan)}.feed-dot.bad{background:var(--red);box-shadow:0 0 10px var(--red)}.feed-row b{font-size:11px}.feed-row small{display:block;color:#6f7782;font-size:9px;margin-top:3px}.feed-row>strong{font-size:9px;color:#aeb6c2}
+.chat-feed{display:flex;flex-direction:column;gap:10px;padding-right:4px}.chat-empty{color:#6f7784;text-align:center;padding:22px;font-size:11px}.chat-item{padding:9px 2px}.chat-meta{display:flex;justify-content:space-between;color:#6e7784;font-size:8px;text-transform:uppercase;letter-spacing:.08em}.chat-user,.chat-agent{margin-top:6px;padding:9px 11px;border-radius:12px;line-height:1.45;font-size:11px;white-space:pre-wrap;word-break:break-word}.chat-user{background:rgba(227,183,47,.08);border:1px solid rgba(227,183,47,.16)}.chat-agent{background:rgba(83,240,207,.06);border:1px solid rgba(83,240,207,.12);color:#d7e7e4}.agent-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--cyan);margin-right:7px;box-shadow:0 0 8px var(--cyan)}.chat-form{display:grid;grid-template-columns:1fr auto;gap:9px;margin-top:10px}.chat-form textarea{width:100%;resize:none;min-height:44px;max-height:120px;padding:12px 13px;color:#ecf0f3;background:#0a0d12;border:1px solid rgba(255,255,255,.1);border-radius:12px;outline:none}.chat-form button{border:0;border-radius:12px;padding:0 15px;background:linear-gradient(135deg,#e3b72f,#b88d1e);color:#101217;font-weight:800;cursor:pointer}.chat-form button:disabled{opacity:.55}.chat-form button b{font-size:17px;margin-left:5px}.chat-hint{color:#5f6874;font-size:9px;margin-top:8px}.mobile-metrics{display:none}
+@media(max-width:900px){.back-wall{height:360px}.floor{height:410px}.desk{transform:scale(.7) translateZ(25px)}.agent-left-top{left:2%;top:10%}.agent-right-top{right:2%;top:10%}.agent-left-bottom{left:-2%;bottom:6%}.agent-right-bottom{right:-2%;bottom:6%}.center-console{transform:translate(-50%,-50%) translateZ(32px) scale(.82)}.bottom-panel{grid-template-columns:1fr}}
+@media(max-width:620px){.room-header{padding:0 13px;height:56px}.tiny{display:none}.ops-room{padding:10px 8px}.back-wall{height:300px}.main-screen{width:68%;left:16%;height:195px;top:58px;padding:13px 14px}.screen-value{font-size:36px;margin-top:17px}.screen-chart{height:50px}.side-screen{display:none}.floor{height:360px;transform:perspective(850px) rotateX(53deg) scale(.97)}.desk{transform:scale(.53) translateZ(25px)}.center-console{transform:translate(-50%,-50%) translateZ(30px) scale(.68)}.floor-caption{font-size:7px;bottom:15px;white-space:nowrap}.bottom-panel{padding:0 8px 18px;gap:10px}.panel-card{padding:12px}.feed,.chat-feed{max-height:210px}.chat-form{grid-template-columns:1fr 76px}.chat-form button{padding:0 10px;font-size:0}.chat-form button b{font-size:17px}.mobile-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;padding:0 8px 16px}.mobile-metrics>div{border:1px solid rgba(255,255,255,.08);background:#0c1016;border-radius:12px;padding:9px}.mobile-metrics span{display:block;font-size:8px;color:#68717d;letter-spacing:.12em}.mobile-metrics b{display:block;margin-top:4px;font-size:13px}}</style>
 </head>
 <body>
-<div class="app">
-  <aside class="sidebar">
-    <div class="brand"><div class="eyebrow">AUTONOMOUS RUNTIME</div><h1>RITT<span>Y</span></h1></div>
-    <nav class="nav">
-      <a href="#overview">Overview</a><a href="#activity">Activity</a><a href="#skills">Skills</a><a href="#system">System</a>
-    </nav>
-    <div class="side-footer">
-      <div class="connection"><div class="eyebrow">CONNECTION</div><div style="margin-top:8px;font-size:13px"><span id="sideDot" class="dot"></span> <span id="sideStatus">Conectando…</span></div><div id="sideUpdated" class="note">Aguardando leitura</div></div>
+<div class="command-room">
+  <div class="room-header">
+    <div class="room-brand"><span class="brand-mark">R</span><div><div class="tiny">AUTOMATON COMMAND CENTER</div><strong>RITTY</strong></div></div>
+    <div class="room-status"><span class="dot ok" id="roomDot"></span><span id="roomStatus">ONLINE</span><span class="sep">•</span><span id="roomClock">--:--:--</span></div>
+  </div>
+  <main class="ops-room" id="overview">
+    <div class="back-wall">
+      <div class="wall-topline"><span>RITTY OPERATIONS FLOOR</span><span id="wallUptime">UPTIME —</span></div>
+      <div class="wall-screen main-screen">
+        <div class="screen-top"><span>LIVE PERFORMANCE</span><span id="screenState">RUNNING</span></div>
+        <div class="screen-value" id="screenTurns">0</div>
+        <div class="screen-label">TOTAL TURNS</div>
+        <div class="screen-chart"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="screen-footer"><span><b id="screenTools">0</b> tool calls / 1h</span><span><b id="screenErrors">0</b> failures / 1h</span></div>
+      </div>
+      <div class="wall-screen side-screen left-screen"><div class="screen-title">RUNTIME</div><strong id="wRuntime">—</strong><small>LIVE STATE</small></div>
+      <div class="wall-screen side-screen right-screen"><div class="screen-title">WORKFORCE</div><strong id="wWorkers">0</strong><small>ACTIVE WORKERS</small></div>
+      <div class="wall-grid-lines"></div>
     </div>
-  </aside>
-  <main class="main">
-    <div class="topbar">
-      <div><div class="eyebrow">RITTY / COMMAND CENTER</div><h2 id="topTitle">Leitura operacional</h2></div>
-      <div style="display:flex;gap:8px;align-items:center"><div class="status-line"><span id="mainDot" class="dot"></span><span id="mainStatus">Conectando…</span></div><button id="refresh" class="refresh">Atualizar</button></div>
+    <div class="floor">
+      <div class="floor-border"></div><div class="floor-glow"></div>
+      <div class="desk agent agent-left-top"><div class="agent-screen"><span class="scan"></span><b>WORKER A</b><small id="agentA">IDLE</small></div><div class="desk-body"></div><div class="chair"></div><div class="agent-head"></div></div>
+      <div class="desk agent agent-right-top"><div class="agent-screen"><span class="scan"></span><b>WORKER B</b><small id="agentB">IDLE</small></div><div class="desk-body"></div><div class="chair"></div><div class="agent-head violet"></div></div>
+      <div class="desk agent agent-left-bottom"><div class="agent-screen"><span class="scan"></span><b>WORKER C</b><small id="agentC">IDLE</small></div><div class="desk-body"></div><div class="chair"></div><div class="agent-head blue"></div></div>
+      <div class="desk agent agent-right-bottom"><div class="agent-screen"><span class="scan"></span><b>WORKER D</b><small id="agentD">IDLE</small></div><div class="desk-body"></div><div class="chair"></div><div class="agent-head gold"></div></div>
+      <div class="center-console"><div class="console-screen"><div class="console-brand">RITTY</div><div class="console-line"><span>STATUS</span><b id="consoleState">ONLINE</b></div><div class="console-line"><span>SKILLS</span><b id="consoleSkills">0</b></div><div class="console-line"><span>HEARTBEATS</span><b id="consoleHB">0</b></div></div><div class="console-base"></div></div>
+      <div class="floor-caption"><span>OPERATIONS</span><span class="pill-live"><i></i> LIVE</span><span id="floorMeta">0 cycles · 0 skills</span></div>
     </div>
-
-    <section id="overview" class="hero">
-      <div class="hero-card">
-        <div class="eyebrow">LIVE RUNTIME</div>
-        <h3 id="heroName">RITTY</h3>
-        <p id="heroDesc">Painel somente leitura do runtime autônomo. Os números abaixo são lidos diretamente do processo e do banco local do agente.</p>
-        <div class="pillrow"><span id="statePill" class="pill">Estado —</span><span id="modelPill" class="pill">Modelo —</span><span class="pill">READ ONLY</span></div>
-      </div>
-      <div class="hero-card orbit"><div class="orb" aria-hidden="true"></div></div>
-    </section>
-
-
-    <section class="floor-wrap" aria-label="Central operacional isométrica">
-      <div class="floor-top"><h4>Central de operações</h4><span>VISUALIZAÇÃO DO RUNTIME · SOMENTE LEITURA</span></div>
-      <div class="floor-stage" aria-hidden="true">
-        <div class="floor-grid">
-          <div class="floor-wall"></div><div class="floor-console"></div>
-          <div class="floor-desk desk-a"></div><div class="floor-desk desk-b"></div><div class="floor-desk desk-c"></div><div class="floor-desk desk-d"></div>
-        </div>
-      </div>
-      <div class="floor-status"><span class="floor-chip"><b>●</b> Runtime</span><span class="floor-chip"><b id="floorTurns">—</b> ciclos</span><span class="floor-chip"><b id="floorWorkers">—</b> workers ativos</span><span class="floor-chip"><b id="floorSkills">—</b> skills</span></div>
-    </section>
-
-    <section class="grid">
-      <div class="panel metric"><div class="label">Estado atual</div><div class="value" id="mState">—</div><div class="sub">fonte: runtime</div></div>
-      <div class="panel metric"><div class="label">Ciclos / turns</div><div class="value" id="mTurns">—</div><div class="sub" id="mTurnsSub">total</div></div>
-      <div class="panel metric"><div class="label">Skills ativas</div><div class="value" id="mSkills">—</div><div class="sub">carregadas no banco</div></div>
-      <div class="panel metric"><div class="label">Uptime</div><div class="value" id="mUptime">—</div><div class="sub">processo atual</div></div>
-    </section>
-
-    <section id="activity" class="two">
-      <div class="panel">
-        <div class="panel-head"><h4>Atividade recente</h4><span id="activityWindow">últimos registros</span></div>
-        <div id="turnList" class="list"></div>
-        <div class="note">O painel não expõe prompts, pensamentos, argumentos de ferramentas ou resultados brutos.</div>
-      </div>
-      <div class="panel">
-        <div class="panel-head"><h4>Ferramentas</h4><span id="toolSummary">—</span></div>
-        <div id="toolList" class="list"></div>
-      </div>
-    </section>
-
-    <section id="skills" class="panel" style="margin-bottom:16px">
-      <div class="panel-head"><h4>Skills / capacidades</h4><span id="skillSummary">—</span></div>
-      <div id="skillList" class="list"></div>
-    </section>
-
-    <section id="system" class="columns">
-      <div class="panel"><div class="panel-head"><h4>Heartbeats</h4><span id="hbSummary">—</span></div><div id="hbList" class="list"></div></div>
-      <div class="panel"><div class="panel-head"><h4>Workers / children</h4><span id="childSummary">—</span></div><div id="childList" class="list"></div></div>
-      <div class="panel"><div class="panel-head"><h4>Saúde observada</h4><span>somente leitura</span></div>
-        <div class="list">
-          <div class="row"><div class="dot ok"></div><div><div class="name">Runtime</div><div class="meta">processo respondeu ao painel</div></div><div class="right oktxt" id="healthRuntime">OK</div></div>
-          <div class="row"><div class="dot"></div><div><div class="name">Atualização</div><div class="meta" id="healthUpdated">—</div></div><div class="right">LIVE</div></div>
-          <div class="row"><div class="dot"></div><div><div class="name">Falhas recentes</div><div class="meta">tool calls com erro · última hora</div></div><div class="right" id="healthErrors">—</div></div>
-        </div>
-        <div class="panel-head" style="margin-top:15px"><h4>Erros recentes</h4><span id="errorSummary">sanitizados</span></div>
-        <div id="errorList" class="list"></div>
-      </div>
-    </section>
-    <div class="footer">RITTY Command Center · leitura operacional · sem controles financeiros</div>
   </main>
+  <section class="bottom-panel">
+    <div class="panel-card activity-card"><div class="panel-heading"><strong>Recent Activity</strong><span id="activityCount">0 events</span></div><div id="activityFeed" class="feed"></div></div>
+    <div class="panel-card chat-card">
+      <div class="panel-heading"><strong>Talk to RITTY</strong><span>CREATOR COMMAND CHANNEL</span></div>
+      <div id="chatFeed" class="chat-feed"><div class="chat-empty">Mande uma tarefa para o RITTY.</div></div>
+      <form id="chatForm" class="chat-form"><textarea id="chatInput" maxlength="64000" rows="1" placeholder="Digite uma tarefa para o RITTY…"></textarea><button id="chatSend" type="submit">Enviar <b>↗</b></button></form>
+      <div id="chatHint" class="chat-hint">A tarefa entra na fila do runtime.</div>
+    </div>
+  </section>
+  <section class="mobile-metrics"><div><span>STATE</span><b id="mState">—</b></div><div><span>TURNS</span><b id="mTurns">0</b></div><div><span>SKILLS</span><b id="mSkills">0</b></div><div><span>UPTIME</span><b id="mUptime">—</b></div></section>
 </div>
-<nav class="mobile-nav"><a class="active" href="#overview">Visão</a><a href="#activity">Atividade</a><a href="#skills">Skills</a><a href="#system">Sistema</a></nav>
 <script>
-const $ = function(id){ return document.getElementById(id); };
-const esc = function(v){
-  return String(v == null ? "" : v)
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;");
-};
-function fmtTime(v){
-  if(!v) return "—";
-  try{
-    return new Date(v).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"});
-  }catch(e){ return v; }
-}
-function fmtAge(v){
-  if(!v) return "—";
-  var s=Math.max(0,Math.floor((Date.now()-new Date(v).getTime())/1000));
-  if(s<60) return String(s)+"s atrás";
-  if(s<3600) return String(Math.floor(s/60))+"min atrás";
-  return String(Math.floor(s/3600))+"h atrás";
-}
-function fmtUp(sec){
-  if(sec==null) return "—";
-  var s=Math.floor(sec);
-  var d=Math.floor(s/86400); s%=86400;
-  var h=Math.floor(s/3600); s%=3600;
-  var m=Math.floor(s/60);
-  return d ? String(d)+"d "+String(h)+"h" : String(h)+"h "+String(m)+"m";
-}
-function setConn(ok,text){
-  $("mainDot").className="dot "+(ok?"ok":"bad");
-  $("sideDot").className="dot "+(ok?"ok":"bad");
-  $("mainStatus").textContent=text;
-  $("sideStatus").textContent=text;
-}
-function rowHtml(title,meta,right,rightClass){
-  rightClass=rightClass||"";
-  var dotClass=rightClass==="errtxt" ? "bad" : "ok";
-  return '<div class="row"><div class="dot '+dotClass+'"></div><div><div class="name">'+esc(title)+'</div><div class="meta">'+esc(meta)+'</div></div><div class="right '+rightClass+'">'+esc(right)+'</div></div>';
-}
-function render(d){
-  setConn(true,"Conectado");
-  $("sideUpdated").textContent="Atualizado "+fmtTime(d.generatedAt);
-  $("healthUpdated").textContent=fmtAge(d.generatedAt)+(d.apiLatencyMs!=null?" · API "+String(d.apiLatencyMs)+" ms":"");
-  $("heroName").textContent=d.identity.name;
-  $("mState").textContent=d.runtime.state;
-  $("mTurns").textContent=d.metrics.turnsTotal;
-  $("mTurnsSub").textContent=String(d.metrics.turns1h)+" na última hora";
-  $("mSkills").textContent=d.metrics.skills;
-  $("mUptime").textContent=fmtUp(d.runtime.uptimeSeconds);
-  $("floorTurns").textContent=String(d.metrics.turnsTotal);
-  $("floorWorkers").textContent=String(d.metrics.childrenAlive);
-  $("floorSkills").textContent=String(d.metrics.skills);
-  $("statePill").textContent="Estado · "+d.runtime.state;
-  $("modelPill").textContent="Modelo · "+d.identity.model;
-  $("healthErrors").textContent=d.metrics.errors1h;
-  $("toolSummary").textContent=String(d.metrics.toolCalls1h)+" calls / 1h";
-  $("activityWindow").textContent="mais recentes";
-  $("hbSummary").textContent=String(d.metrics.heartbeatsActive)+" ativos";
-  $("childSummary").textContent=String(d.metrics.childrenAlive)+" vivos";
-  $("skillSummary").textContent=String(d.metrics.skills)+" ativas";
-
-  $("turnList").innerHTML=d.recentTurns.length
-    ? d.recentTurns.map(function(t){
-        return rowHtml("Turn "+t.id.slice(0,10),fmtTime(t.timestamp)+" · "+String(t.toolCalls||0)+" tools",t.state,t.state==="error"?"errtxt":"");
-      }).join("")
-    : '<div class="note">Nenhum turn registrado ainda.</div>';
-
-  $("toolList").innerHTML=d.recentTools.length
-    ? d.recentTools.map(function(t){
-        return rowHtml(t.name,fmtTime(t.timestamp),t.failed?"FALHOU":(t.durationMs?String(Math.round(t.durationMs))+" ms":"OK"),t.failed?"errtxt":"");
-      }).join("")
-    : '<div class="note">Nenhuma ferramenta registrada ainda.</div>';
-
-  $("skillList").innerHTML=d.skills.length
-    ? d.skills.map(function(s){
-        return '<div class="skill"><strong>'+esc(s.name)+'</strong><p>'+esc(s.description||"Sem descrição.")+'</p></div>';
-      }).join("")
-    : '<div class="note">Nenhuma skill ativa.</div>';
-
-  $("hbList").innerHTML=d.heartbeats.length
-    ? d.heartbeats.map(function(h){
-        return rowHtml(h.name,(h.schedule||"sem agenda")+" · último "+fmtAge(h.lastRun),h.enabled?"ATIVO":"OFF",h.enabled?"":"errtxt");
-      }).join("")
-    : '<div class="note">Nenhum heartbeat configurado.</div>';
-
-  $("childList").innerHTML=d.children.length
-    ? d.children.slice(0,8).map(function(ch){
-        return rowHtml(ch.name||"worker",ch.status||"sem status",ch.status==="dead"?"DEAD":"VIVO",ch.status==="dead"?"errtxt":"");
-      }).join("")
-    : '<div class="note">Nenhum child/worker registrado.</div>';
-
-  $("errorSummary").textContent=d.recentErrors.length ? String(d.recentErrors.length)+" registros" : "nenhum";
-  $("errorList").innerHTML=d.recentErrors.length
-    ? d.recentErrors.map(function(e){
-        return rowHtml(e.name,e.category+" · "+fmtTime(e.timestamp),"ERRO","errtxt");
-      }).join("")
-    : '<div class="note">Nenhum erro recente registrado.</div>';
+const $=id=>document.getElementById(id);
+const esc=v=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+function fmtTime(v){try{return new Date(v).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});}catch(e){return "—";}}
+function fmtUp(sec){if(sec==null)return "—";let s=Math.floor(sec),d=Math.floor(s/86400);s%=86400;let h=Math.floor(s/3600);s%=3600;let m=Math.floor(s/60);return d?d+"d "+h+"h":h+"h "+m+"m";}
+function renderChat(d){
+  const turns=d.chatTurns||[];
+  $("chatFeed").innerHTML=turns.length?turns.map(t=>'<div class="chat-item"><div class="chat-meta"><span>'+esc(t.inputSource||"RITTY")+'</span><time>'+esc(fmtTime(t.timestamp))+'</time></div><div class="chat-user">'+esc(t.input||"")+'</div><div class="chat-agent"><span class="agent-dot"></span>'+esc(t.response||"RITTY processando…")+'</div></div>').join(""):'<div class="chat-empty">Mande uma tarefa para o RITTY.</div>';
+  $("chatFeed").scrollTop=$("chatFeed").scrollHeight;
 }
 async function load(){
   try{
-    var started=performance.now();
-    var r=await fetch("/api/dashboard",{cache:"no-store"});
-    if(!r.ok) throw new Error("dashboard "+r.status);
-    var d=await r.json();
-    d.apiLatencyMs=Math.round(performance.now()-started);
-    render(d);
-  }catch(e){
-    setConn(false,"Sem conexão");
-    $("sideUpdated").textContent="Não foi possível ler o runtime";
-    $("healthRuntime").textContent="ERRO";
-  }
+    const r=await fetch("/api/dashboard",{cache:"no-store"}); if(!r.ok) throw Error();
+    const d=await r.json();
+    $("roomStatus").textContent=d.connected?"ONLINE":"OFFLINE"; $("roomClock").textContent=new Date().toLocaleTimeString("pt-BR");
+    $("wallUptime").textContent="UPTIME "+fmtUp(d.runtime.uptimeSeconds);
+    $("screenState").textContent=String(d.runtime.state).toUpperCase(); $("screenTurns").textContent=d.metrics.turnsTotal; $("screenTools").textContent=d.metrics.toolCalls1h; $("screenErrors").textContent=d.metrics.errors1h;
+    $("wRuntime").textContent=String(d.runtime.state).toUpperCase(); $("wWorkers").textContent=d.metrics.childrenAlive; $("consoleState").textContent=String(d.runtime.state).toUpperCase(); $("consoleSkills").textContent=d.metrics.skills; $("consoleHB").textContent=d.metrics.heartbeatsActive;
+    $("floorMeta").textContent=d.metrics.turnsTotal+" cycles · "+d.metrics.skills+" skills";
+    $("mState").textContent=d.runtime.state; $("mTurns").textContent=d.metrics.turnsTotal; $("mSkills").textContent=d.metrics.skills; $("mUptime").textContent=fmtUp(d.runtime.uptimeSeconds);
+    const children=d.children||[]; ["A","B","C","D"].forEach((x,i)=>{const c=children[i];$("agent"+x).textContent=c?(c.status||"RUNNING").toUpperCase():"IDLE";});
+    const acts=(d.recentTurns||[]).slice(0,8); $("activityCount").textContent=acts.length+" events";
+    $("activityFeed").innerHTML=acts.length?acts.map(t=>'<div class="feed-row"><div class="feed-dot '+(t.state==="error"?"bad":"")+'"></div><div><b>Turn '+esc(t.id.slice(0,8))+'</b><small>'+esc(fmtTime(t.timestamp))+' · '+esc(t.state)+'</small></div><strong>'+esc(t.toolCalls||0)+' tools</strong></div>').join(""):'<div class="chat-empty">Sem atividade recente.</div>';
+    renderChat(d);
+  }catch(e){$("roomStatus").textContent="OFFLINE";}
 }
-$("refresh").addEventListener("click",load);
-load();
-setInterval(load,5000);
+$("chatForm").addEventListener("submit",async e=>{
+  e.preventDefault(); const input=$("chatInput"); const message=input.value.trim(); if(!message)return;
+  $("chatSend").disabled=true; $("chatHint").textContent="Enviando para o runtime…";
+  try{
+    const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message})});
+    const d=await r.json(); if(!r.ok) throw Error(d.error||"Falha ao enviar");
+    input.value=""; $("chatHint").textContent="Enviado. RITTY vai processar na próxima execução."; load();
+  }catch(err){$("chatHint").textContent=String(err.message||err);}
+  finally{$("chatSend").disabled=false;input.focus();}
+});
+load(); setInterval(load,5000);
 </script>
 </body></html>`;
+
+function requireUlid(): string {
+  return "dash-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
+}
 
 function safeInt(value: unknown): number { return typeof value === "number" && Number.isFinite(value) ? value : 0; }
 
@@ -385,6 +230,7 @@ function buildSnapshot(db: AutomatonDatabase, config: AutomatonConfig) {
     skills,
     heartbeats,
     children,
+    chatTurns: db.raw.prepare("SELECT id,timestamp,input,input_source,thinking FROM turns WHERE input_source IN ('creator','agent') AND input IS NOT NULL ORDER BY timestamp DESC LIMIT 24").all().map((row: any) => ({ id: String(row.id), timestamp: String(row.timestamp), input: String(row.input ?? ""), inputSource: String(row.input_source ?? "agent"), response: String(row.thinking ?? "") })).reverse(),
   };
 }
 
@@ -420,6 +266,29 @@ export function startDashboardServer(options: { db: AutomatonDatabase; config: A
         res.writeHead(503, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
         res.end(JSON.stringify({ connected: false, error: "dashboard_unavailable" }));
       }
+      return;
+    }
+
+    if (pathname === "/api/chat" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => { body += chunk; if (body.length > 70000) req.destroy(); });
+      req.on("end", () => {
+        try {
+          const parsed = JSON.parse(body || "{}") as { message?: unknown };
+          const message = typeof parsed.message === "string" ? parsed.message.trim() : "";
+          if (!message) { res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify({ error: "empty_message" })); return; }
+          if (message.length > 64000) { res.writeHead(413, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify({ error: "message_too_long" })); return; }
+          const id = requireUlid();
+          db.raw.prepare("INSERT OR IGNORE INTO inbox_messages (id, from_address, to_address, content, received_at, status, retry_count, max_retries) VALUES (?, ?, ?, ?, ?, 'received', 0, 3)").run(id, "dashboard://creator", config.walletAddress, message, new Date().toISOString());
+          db.deleteKV("sleep_until");
+          db.setAgentState("waking");
+          db.setKV("dashboard_last_message_at", new Date().toISOString());
+          res.writeHead(202, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+          res.end(JSON.stringify({ queued: true, id }));
+        } catch {
+          res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify({ error: "chat_unavailable" }));
+        }
+      });
       return;
     }
 
