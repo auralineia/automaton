@@ -554,9 +554,9 @@ export class Orchestrator {
         const timeoutMs = Math.max(60_000, Number(task.timeoutMs) || 300_000);
         const ageMs = Number.isFinite(leaseStartedAt) ? Math.max(0, now - leaseStartedAt) : 0;
         const legacyStale = !task.startedAt && !leaseValue?.value && ageMs >= 120_000;
-        const timedOut = ageMs >= timeoutMs;
+        const timedOutRemote = !assignedAddress.startsWith("local://") && ageMs >= timeoutMs;
 
-        if (!alive || legacyStale || timedOut) {
+        if (!alive || legacyStale || timedOutRemote) {
           logger.warn("Recovering stale task lease", {
             taskId: task.id,
             worker: assignedAddress,
@@ -565,7 +565,7 @@ export class Orchestrator {
             ageMs,
             timeoutMs,
             legacyStale,
-            timedOut,
+            timedOutRemote,
           });
           this.params.db.prepare(
             "UPDATE task_graph SET status = 'pending', assigned_to = NULL, started_at = NULL WHERE id = ?",
@@ -574,7 +574,7 @@ export class Orchestrator {
 
           // Prevent an expired remote child from immediately winning the same
           // stale task again while its local status still says it is running.
-          if (timedOut && alive && !assignedAddress.startsWith("local://")) {
+          if (timedOutRemote && alive) {
             this.params.db.prepare(
               "UPDATE children SET status = 'failed', last_checked = datetime('now') WHERE address = ?",
             ).run(assignedAddress);
@@ -616,7 +616,7 @@ export class Orchestrator {
               description: task.description,
               agentRole: task.agentRole,
               dependencies: task.dependencies,
-              timeoutMs: task.timeoutMs,
+              timeoutMs: task.metadata.timeoutMs,
             }),
           });
 
