@@ -966,12 +966,17 @@ export async function runAgentLoop(
         (tc) => getObservedToolName(tc) === "create_goal" && tc.result?.includes("BLOCKED"),
       );
       if (blockedGoalCall && currentInput?.source !== "creator") {
-        // Exponential backoff: 2min → 4min → 8min → cap at 10min
+        // Exponential backoff when there is genuinely no active execution.
+        // When an existing task is running, wake quickly so the orchestrator can
+        // recover/reassign it instead of parking the runtime for several minutes.
         const prevBackoff = parseInt(db.getKV("blocked_goal_backoff") || "0", 10);
-        const backoffMs = Math.min(
-          prevBackoff > 0 ? prevBackoff * 2 : 120_000,
-          600_000,
-        );
+        const activeTaskRow = db.raw.prepare(
+          "SELECT COUNT(*) AS c FROM task_graph WHERE status IN ('assigned', 'running')",
+        ).get() as { c?: number } | undefined;
+        const hasActiveTask = Number(activeTaskRow?.c ?? 0) > 0;
+        const backoffMs = hasActiveTask
+          ? 10_000
+          : Math.min(prevBackoff > 0 ? prevBackoff * 2 : 120_000, 600_000);
         db.setKV("blocked_goal_backoff", String(backoffMs));
         log(config, `[LOOP] create_goal BLOCKED — sleeping ${Math.round(backoffMs / 1000)}s (backoff).`);
         db.setKV("sleep_until", new Date(Date.now() + backoffMs).toISOString());
