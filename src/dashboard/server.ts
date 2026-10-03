@@ -281,6 +281,7 @@ export function startDashboardServer(options: { db: AutomatonDatabase; config: A
           const id = requireUlid();
           db.raw.prepare("INSERT OR IGNORE INTO inbox_messages (id, from_address, to_address, content, received_at, status, retry_count, max_retries) VALUES (?, ?, ?, ?, ?, 'received', 0, 3)").run(id, "dashboard://creator", config.walletAddress, message, new Date().toISOString());
           db.deleteKV("sleep_until");
+          db.raw.prepare("INSERT INTO wake_events (source, reason, payload) VALUES (?, ?, ?)").run("dashboard", "manual request", JSON.stringify({ messageId: id }));
           db.setAgentState("waking");
           db.setKV("dashboard_last_message_at", new Date().toISOString());
           res.writeHead(202, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
