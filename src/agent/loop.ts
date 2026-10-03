@@ -490,6 +490,39 @@ export async function runAgentLoop(
       `[ORCHESTRATION] Legacy persistence-test cleanup skipped: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+
+  // Also clear the legacy test task itself. The old task can carry the test marker
+  // only in its task description rather than in the parent goal title.
+  try {
+    const legacyTasks = db.raw.prepare(
+      "SELECT id, goal_id FROM task_graph " +
+      "WHERE lower(COALESCE(title, '')) LIKE '%teste-persistencia%' " +
+      "OR lower(COALESCE(description, '')) LIKE '%teste-persistencia%' " +
+      "OR lower(COALESCE(title, '')) LIKE '%teste de persistência%' " +
+      "OR lower(COALESCE(description, '')) LIKE '%teste de persistência%' " +
+      "OR lower(COALESCE(title, '')) LIKE '%ritty persistente ok%' " +
+      "OR lower(COALESCE(description, '')) LIKE '%ritty persistente ok%'"
+    ).all() as Array<{ id: string; goal_id: string }>;
+
+    for (const task of legacyTasks) {
+      const now = new Date().toISOString();
+      db.raw.prepare(
+        "UPDATE task_graph SET status = 'completed', assigned_to = NULL, completed_at = COALESCE(completed_at, ?) WHERE id = ?"
+      ).run(now, task.id);
+      db.raw.prepare(
+        "UPDATE goals SET status = 'completed', completed_at = COALESCE(completed_at, ?) WHERE id = ? AND status = 'active'"
+      ).run(now, task.goal_id);
+      logger.info("[ORCHESTRATION] Completed legacy persistence-test task and parent goal.", {
+        taskId: task.id,
+        goalId: task.goal_id,
+      });
+    }
+  } catch (error) {
+    logger.warn(
+      `[ORCHESTRATION] Legacy persistence-test task cleanup skipped: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
   // Set start time
   if (!db.getKV("start_time")) {
     db.setKV("start_time", new Date().toISOString());
