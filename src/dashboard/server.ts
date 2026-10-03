@@ -91,6 +91,9 @@ async function load(){
     const acts=(d.recentTurns||[]).slice(0,8); $("activityCount").textContent=acts.length+" events";
     $("activityFeed").innerHTML=acts.length?acts.map(t=>'<div class="feed-row"><div class="feed-dot '+(t.state==="error"?"bad":"")+'"></div><div><b>Turn '+esc(t.id.slice(0,8))+'</b><small>'+esc(fmtTime(t.timestamp))+' · '+esc(t.state)+'</small></div><strong>'+esc(t.toolCalls||0)+' tools</strong></div>').join(""):'<div class="chat-empty">Sem atividade recente.</div>';
     renderChat(d);
+    if(d.chatPending && d.chatPending.status === "failed"){ $("chatHint").textContent="RITTY não conseguiu executar a tarefa ainda. Verifique o estado do provedor."; }
+    else if(d.chatPending && d.chatPending.status === "received"){ $("chatHint").textContent="Tarefa na fila. RITTY aguardará uma janela de inferência disponível."; }
+    else if(d.chatPending && d.chatPending.status === "in_progress"){ $("chatHint").textContent="RITTY está processando esta tarefa agora…"; }
   }catch(e){$("roomStatus").textContent="OFFLINE";}
 }
 $("chatForm").addEventListener("submit",async e=>{
@@ -231,6 +234,11 @@ function buildSnapshot(db: AutomatonDatabase, config: AutomatonConfig) {
     heartbeats,
     children,
     chatTurns: db.raw.prepare("SELECT id,timestamp,input,input_source,thinking FROM turns WHERE input_source IN ('creator','agent') AND input IS NOT NULL ORDER BY timestamp DESC LIMIT 24").all().map((row: any) => ({ id: String(row.id), timestamp: String(row.timestamp), input: String(row.input ?? ""), inputSource: String(row.input_source ?? "agent"), response: String(row.thinking ?? "") })).reverse(),
+    chatPending: (() => {
+      const row = db.raw.prepare("SELECT id,content,status,received_at,retry_count,max_retries FROM inbox_messages WHERE from_address = ? ORDER BY received_at DESC LIMIT 1").get("dashboard://creator") as any;
+      if (!row) return null;
+      return { id: String(row.id), content: String(row.content ?? ""), status: String(row.status ?? "received"), receivedAt: String(row.received_at ?? ""), retryCount: Number(row.retry_count ?? 0), maxRetries: Number(row.max_retries ?? 3) };
+    })(),
   };
 }
 
