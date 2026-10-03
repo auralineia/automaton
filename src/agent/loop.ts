@@ -433,12 +433,14 @@ export async function runAgentLoop(
       const creatorWaiting = !!db.raw.prepare(
         "SELECT 1 FROM inbox_messages WHERE status = 'received' AND from_address = 'dashboard://creator' LIMIT 1",
       ).get();
+      const creatorTaskActive = !!db.getKV("creator_task_active");
       // Check if we should be sleeping, but never sleep through creator work.
       const sleepUntil = db.getKV("sleep_until");
       if (
         sleepUntil &&
         new Date(sleepUntil) > new Date() &&
         !creatorWaiting &&
+        !creatorTaskActive &&
         pendingInput?.source !== "creator"
       ) {
         log(config, `[SLEEP] Sleeping until ${sleepUntil}`);
@@ -470,6 +472,19 @@ export async function runAgentLoop(
           pendingInput = {
             content: formatted,
             source: hasCreatorMessage ? "creator" : "agent",
+          };
+          if (hasCreatorMessage) {
+            // Persist the creator task across tool-only turns. Inbox messages are
+            // acknowledged after each turn, but implementation commonly needs
+            // several inference/tool cycles to finish.
+            db.setKV("creator_task_active", formatted);
+          }
+        } else if (db.getKV("creator_task_active")) {
+          pendingInput = {
+            content:
+              "CONTINUE THE ACTIVE CREATOR TASK. Do not restart from scratch; inspect prior tool results and continue implementation until the work is actually complete or blocked by a specific missing capability. Active command:\n" +
+              db.getKV("creator_task_active"),
+            source: "creator",
           };
         } else if (wakeupPending) {
           pendingInput = { content: wakeupInput, source: "wakeup" };
@@ -800,7 +815,7 @@ export async function runAgentLoop(
       const blockedGoalCall = turn.toolCalls.find(
         (tc) => getObservedToolName(tc) === "create_goal" && tc.result?.includes("BLOCKED"),
       );
-      if (blockedGoalCall) {
+      if (blockedGoalCall && currentInput?.source !== "creator") {
         // Exponential backoff: 2min → 4min → 8min → cap at 10min
         const prevBackoff = parseInt(db.getKV("blocked_goal_backoff") || "0", 10);
         const backoffMs = Math.min(
@@ -968,6 +983,12 @@ export async function runAgentLoop(
         (!response.toolCalls || response.toolCalls.length === 0) &&
         response.finishReason === "stop"
       ) {
+        // A text-only response closes a creator task; tool-only turns retain
+        // the task so the next loop iteration continues from saved history.
+        if (currentInput?.source === "creator") {
+          db.deleteKV("creator_task_active");
+          log(config, "[CREATOR] Task turn returned a final text response.");
+        }
         // Agent produced text without tool calls.
         // This is a natural pause point -- no work queued, sleep briefly.
         log(config, "[IDLE] No pending inputs. Entering brief sleep.");
