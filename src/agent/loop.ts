@@ -790,7 +790,12 @@ export async function runAgentLoop(
             "Do NOT merely describe what you would do. Start the concrete implementation immediately. " +
             "Use as many tool calls as needed within the normal per-turn limit, then continue on " +
             "subsequent turns until the requested work is actually completed and verified. " +
-            "Never perform financial transfers or wallet operations for this creator task.",
+            "Never perform financial transfers or wallet operations for this creator task. " +
+            "The runtime root package.json, config.json, wallet.json, state database, SOUL.md, " +
+            "policy/guard files, and other protected runtime files are read-only. NEVER attempt to write, " +
+            "replace, or install dependencies through those files. For coding tasks, use the existing " +
+            "Node.js runtime and built-in modules whenever possible, create application source files in " +
+            "./workspace/<project>, and verify them with the exec tool. Do not stop at a plan or explanation.",
         });
       }
 
