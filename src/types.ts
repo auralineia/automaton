@@ -170,6 +170,8 @@ export interface ToolContext {
   conway: ConwayClient;
   inference: InferenceClient;
   social?: SocialClientInterface;
+  /** Source of the currently executing turn, when known. */
+  inputSource?: InputSource;
 }
 
 export interface SocialClientInterface {
