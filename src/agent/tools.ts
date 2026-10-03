@@ -35,10 +35,17 @@ const SANDBOX_HOME = "/root";
  * Returns the resolved absolute path, or an error string if out of bounds.
  */
 function confinePathToSandbox(filePath: string): string | { error: string } {
-  // Resolve ~ to SANDBOX_HOME
-  const expanded = filePath.startsWith("~")
-    ? nodePath.join(SANDBOX_HOME, filePath.slice(1))
+  // Some model-generated commands use the conventional /home/ritty alias.
+  // The sovereign runtime's actual sandbox home is /root, so normalize that
+  // alias before applying the confinement check.
+  const normalizedInput = filePath === "/home/ritty" || filePath.startsWith("/home/ritty/")
+    ? SANDBOX_HOME + filePath.slice("/home/ritty".length)
     : filePath;
+
+  // Resolve ~ to SANDBOX_HOME
+  const expanded = normalizedInput.startsWith("~")
+    ? nodePath.join(SANDBOX_HOME, normalizedInput.slice(1))
+    : normalizedInput;
   // Resolve to absolute (relative paths resolve against SANDBOX_HOME)
   const resolved = nodePath.resolve(SANDBOX_HOME, expanded);
   // Ensure the resolved path is within the sandbox home
