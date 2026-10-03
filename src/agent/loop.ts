@@ -823,8 +823,10 @@ export async function runAgentLoop(
           content:
             "SOVEREIGN EXECUTION RULE: Do not repeatedly check credits or status. " +
             "One credit check is enough unless a real decision requires a fresh balance. " +
-            "After a successful status check, execute ONE concrete useful task from your goals/genesis prompt, " +
-            "or sleep if there is genuinely no work. Do not call the same status tool on consecutive turns.",
+            "After a successful status check, execute ONE concrete useful non-financial task from your goals/genesis prompt, " +
+            "or sleep if there is genuinely no work. Do not call the same status tool on consecutive turns. " +
+            "Never initiate transfers, trades, wallet actions, crypto work, currency conversion, payments, or other financial activity autonomously. " +
+            "When a financial goal is already active but no creator command is being processed, do not advance that goal; instead perform only safe runtime/tool diagnostics.",
         });
       }
 
