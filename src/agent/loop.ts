@@ -617,7 +617,7 @@ export async function runAgentLoop(
       if (pendingInput?.source !== "creator") {
         const activeGoals = getActiveGoals(db.raw);
         const autonomousFinancialGoal = activeGoals.some((goal) =>
-          /(wallet|transfer|trading|trade|investment|invest|payment|money|finance|financial|crypto|bitcoin|usdc|currency|exchange|bank)/i.test(
+          /(wallet|transfer|trading|trade|investment|invest|payment|crypto|bitcoin|usdc|currency|exchange|bank|purchase|withdrawal|deposit|transaction)/i.test(
             `${goal.title} ${goal.description}`,
           ),
         );
@@ -913,10 +913,13 @@ export async function runAgentLoop(
           content:
             "SOVEREIGN EXECUTION RULE: Do not repeatedly check credits or status. " +
             "One credit check is enough unless a real decision requires a fresh balance. " +
-            "After a successful status check, execute ONE concrete useful non-financial task from your goals/genesis prompt, " +
-            "or sleep if there is genuinely no work. Do not call the same status tool on consecutive turns. " +
-            "Never initiate transfers, trades, wallet actions, crypto work, currency conversion, payments, or other financial activity autonomously. " +
-            "When a financial goal is already active but no creator command is being processed, do not advance that goal; instead perform only safe runtime/tool diagnostics.",
+            "After a successful status check, pursue one concrete step toward creating genuine, verifiable value and earning revenue, " +
+            "using available tools and the active goal/genesis strategy; do not idle merely because the creator has not sent a new command. " +
+            "Prefer low-cost work such as market research, identifying legitimate customer needs, preparing a useful digital deliverable, " +
+            "improving an existing product, or drafting a truthful offer. Continue active non-transactional business goals autonomously. " +
+            "Never initiate transfers, trades, wallet actions, crypto transactions, currency conversion, payments, purchases, paid deployments, " +
+            "or binding contracts without explicit creator approval. Never spam or send external sales messages without approval. " +
+            "If blocked, record the precise blocker and choose another safe productive step; sleep only when no safe useful work is available.",
         });
       }
 
