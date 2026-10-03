@@ -600,7 +600,7 @@ export class Orchestrator {
           role: task.agentRole,
           worker: address.startsWith("local://") ? address.slice(0, 24) : address.slice(0, 16),
           ageSec: ageMs == null ? null : Math.round(ageMs / 1000),
-          timeoutSec: Math.round(Math.max(60_000, Number(task.metadata.timeoutMs) || 300_000) / 1000),
+          timeoutSec: Math.round(Math.max(60_000, Number(task.timeoutMs) || 300_000) / 1000),
           selfAssigned: address === this.params.identity.address,
           alive,
         };
