@@ -244,9 +244,28 @@ function buildSnapshot(db: AutomatonDatabase, config: AutomatonConfig) {
         if (thinking) return thinking;
         try {
           const tools = JSON.parse(String(row.tool_calls || "[]"));
-          if (Array.isArray(tools) && tools.length) return `Concluído — ${tools.length} ferramenta(s) executada(s).`;
+          if (Array.isArray(tools) && tools.length) {
+            const successful = tools.filter((tool: any) => !tool?.error);
+            const last = successful[successful.length - 1] ?? tools[tools.length - 1];
+            const result = typeof last?.result === "string" ? last.result.trim() : "";
+            if (result) return result.slice(0, 12000);
+            return `Concluído — ${tools.length} ferramenta(s) executada(s).`;
+          }
         } catch {}
         return row.state === "error" ? "Falha ao processar esta tarefa." : "Tarefa concluída.";
+      })(),
+      toolCalls: (() => {
+        try {
+          const tools = JSON.parse(String(row.tool_calls || "[]"));
+          return Array.isArray(tools) ? tools.map((tool: any) => ({
+            name: String(tool?.name ?? "unknown"),
+            arguments: tool?.arguments ?? {},
+            result: typeof tool?.result === "string" ? tool.result.slice(0, 12000) : tool?.result ?? null,
+            error: tool?.error ?? null,
+          })) : [];
+        } catch {
+          return [];
+        }
       })(),
     })).reverse(),
     chatPending: (() => {
