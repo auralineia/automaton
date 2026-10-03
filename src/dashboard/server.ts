@@ -43,6 +43,27 @@ filter:drop-shadow(0 0 35px rgba(86,240,208,.33));animation:breathe 4.8s ease-in
 .mobile-nav{display:none}
 @media(max-width:1000px){.hero{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}.two,.columns{grid-template-columns:1fr}.orbit{min-height:150px}}
 @media(max-width:720px){.app{display:block}.sidebar{display:none}.main{padding:14px 12px 96px}.topbar h2{font-size:18px}.hero-card{padding:19px}.hero h3{font-size:31px}.grid{gap:9px}.metric{padding:15px}.metric .value{font-size:24px}.panel{padding:14px}.mobile-nav{position:fixed;z-index:50;left:10px;right:10px;bottom:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:7px;border:1px solid var(--line);border-radius:18px;background:rgba(11,13,19,.92);backdrop-filter:blur(22px);box-shadow:var(--shadow)}.mobile-nav a{padding:8px 4px;text-align:center;color:#8f98a8;text-decoration:none;font-size:10px}.mobile-nav a.active{color:var(--cyan)}}
+
+/* 3D operations floor inspired by an isometric control room */
+.floor-wrap{margin:0 0 18px;overflow:hidden;border:1px solid rgba(244,190,67,.22);border-radius:24px;background:radial-gradient(ellipse at 50% 40%,rgba(38,48,61,.8),rgba(10,12,18,.98) 72%);box-shadow:0 24px 70px rgba(0,0,0,.38);position:relative}
+.floor-top{display:flex;justify-content:space-between;align-items:center;padding:17px 20px 0;position:relative;z-index:2}
+.floor-top h4{font-size:14px;margin:0;letter-spacing:.02em}.floor-top span{font-size:11px;color:var(--muted)}
+.floor-stage{height:330px;position:relative;perspective:1000px;display:grid;place-items:center;overflow:hidden}
+.floor-grid{position:absolute;width:min(650px,82vw);height:280px;transform:rotateX(57deg) rotateZ(-35deg);transform-style:preserve-3d;background:linear-gradient(90deg,rgba(239,188,62,.17) 1px,transparent 1px),linear-gradient(rgba(239,188,62,.13) 1px,transparent 1px),linear-gradient(145deg,#34343a,#20232a 65%,#292b31);background-size:34px 34px,34px 34px,100% 100%;border:3px solid #b68a25;box-shadow:0 0 0 5px rgba(225,176,51,.1),0 30px 30px rgba(0,0,0,.55);transform-style:preserve-3d}
+.floor-grid:before{content:"";position:absolute;inset:0;border:1px solid rgba(255,218,107,.4);transform:translateZ(10px);pointer-events:none}
+.floor-wall{position:absolute;left:0;right:0;top:0;height:12px;background:linear-gradient(90deg,#9a7625,#f4ce62,#a57b24);transform:translateZ(30px);box-shadow:0 0 16px rgba(239,190,60,.22)}
+.floor-console{position:absolute;left:50%;top:42%;width:38%;height:29%;transform:translate(-50%,-50%) translateZ(20px);background:linear-gradient(145deg,#555861,#292c35);border:2px solid #8c8e91;box-shadow:0 13px 0 #191b20,0 20px 22px #0008;border-radius:4px}
+.floor-console:before{content:"";position:absolute;left:8%;right:8%;top:10%;height:54%;background:linear-gradient(160deg,#182e2d,#071615);border:2px solid #b18b34;box-shadow:inset 0 0 22px rgba(50,255,194,.14)}
+.floor-console:after{content:"RITTY  /  LIVE OPERATIONS";position:absolute;top:23%;left:0;right:0;text-align:center;color:#65f2c9;font-size:clamp(7px,1vw,11px);font-weight:800;letter-spacing:.12em;transform:translateZ(2px)}
+.floor-desk{position:absolute;width:19%;height:17%;background:linear-gradient(145deg,#666a71,#383c44 65%,#292c33);border:1px solid #999a9c;box-shadow:0 8px 0 #22252b,0 12px 12px #0008;transform:translateZ(19px);border-radius:3px}
+.floor-desk:before{content:"";position:absolute;width:45%;height:52%;left:27%;top:-48%;background:linear-gradient(145deg,#29323a,#10151b);border:2px solid #b6a15e;box-shadow:0 0 12px rgba(89,239,202,.14);border-radius:2px}
+.floor-desk:after{content:"";position:absolute;left:42%;bottom:-10px;width:16%;height:10px;background:#777a80}
+.desk-a{left:13%;top:20%}.desk-b{right:13%;top:20%}.desk-c{left:13%;bottom:18%}.desk-d{right:13%;bottom:18%}
+.floor-status{position:absolute;left:50%;bottom:15px;transform:translateX(-50%);display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:95%;z-index:2}
+.floor-chip{font-size:10px;letter-spacing:.04em;color:#cbd3dc;padding:7px 10px;border:1px solid rgba(255,255,255,.1);background:rgba(8,10,14,.72);border-radius:999px;backdrop-filter:blur(10px)}
+.floor-chip b{color:#68f0ca;margin-right:5px}
+@media(max-width:720px){.floor-stage{height:255px}.floor-grid{width:83vw;height:205px}.floor-top{padding:14px 14px 0}.floor-status{bottom:9px;gap:5px}.floor-chip{font-size:9px;padding:6px 8px}}
+
 </style>
 </head>
 <body>
@@ -70,6 +91,18 @@ filter:drop-shadow(0 0 35px rgba(86,240,208,.33));animation:breathe 4.8s ease-in
         <div class="pillrow"><span id="statePill" class="pill">Estado —</span><span id="modelPill" class="pill">Modelo —</span><span class="pill">READ ONLY</span></div>
       </div>
       <div class="hero-card orbit"><div class="orb" aria-hidden="true"></div></div>
+    </section>
+
+
+    <section class="floor-wrap" aria-label="Central operacional isométrica">
+      <div class="floor-top"><h4>Central de operações</h4><span>VISUALIZAÇÃO DO RUNTIME · SOMENTE LEITURA</span></div>
+      <div class="floor-stage" aria-hidden="true">
+        <div class="floor-grid">
+          <div class="floor-wall"></div><div class="floor-console"></div>
+          <div class="floor-desk desk-a"></div><div class="floor-desk desk-b"></div><div class="floor-desk desk-c"></div><div class="floor-desk desk-d"></div>
+        </div>
+      </div>
+      <div class="floor-status"><span class="floor-chip"><b>●</b> Runtime</span><span class="floor-chip"><b id="floorTurns">—</b> ciclos</span><span class="floor-chip"><b id="floorWorkers">—</b> workers ativos</span><span class="floor-chip"><b id="floorSkills">—</b> skills</span></div>
     </section>
 
     <section class="grid">
@@ -164,6 +197,9 @@ function render(d){
   $("mTurnsSub").textContent=String(d.metrics.turns1h)+" na última hora";
   $("mSkills").textContent=d.metrics.skills;
   $("mUptime").textContent=fmtUp(d.runtime.uptimeSeconds);
+  $("floorTurns").textContent=String(d.metrics.turnsTotal);
+  $("floorWorkers").textContent=String(d.metrics.childrenAlive);
+  $("floorSkills").textContent=String(d.metrics.skills);
   $("statePill").textContent="Estado · "+d.runtime.state;
   $("modelPill").textContent="Modelo · "+d.identity.model;
   $("healthErrors").textContent=d.metrics.errors1h;
