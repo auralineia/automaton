@@ -835,10 +835,23 @@ export async function runAgentLoop(
         "git_branch",
         "review_upstream_changes",
       ]);
+
+      // Deterministic guard: once an autonomous goal exists, the parent must
+      // continue that goal instead of asking the model to create another one.
+      // This is done at tool-exposure time so even malformed model arguments
+      // cannot re-enter create_goal.
+      const activeGoalExists =
+        currentInput?.source !== "creator" &&
+        !!db.raw.prepare(
+          "SELECT 1 FROM goals WHERE status NOT IN ('completed', 'cancelled', 'failed') LIMIT 1",
+        ).get();
+
       const inferenceToolSource =
         currentInput?.source === "creator"
           ? tools.filter((tool) => creatorToolSet.has(tool.name) && !CREATOR_BLOCKED_TOOLS.has(tool.name))
-          : tools;
+          : activeGoalExists
+            ? tools.filter((tool) => tool.name !== "create_goal")
+            : tools;
       const inferenceTools = toolsToInferenceFormat(inferenceToolSource);
       const routerResult = await inferenceRouter.route(
         {
