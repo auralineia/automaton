@@ -528,27 +528,57 @@ export class Orchestrator {
       };
     }
 
-    // Recover stale tasks: workers that died (process restart, sandbox crash)
-    // can leave tasks stuck in 'assigned' or 'running'. A local worker lives
-    // only in this process, so after a restart any persisted local:// assignment
-    // is stale and must be returned to the ready queue. Never treat the parent
-    // automaton's own address as a dead worker.
+    // Recover stale task leases. Persisted task rows can survive a parent
+    // restart even though the worker process that owned them is gone. Older
+    // tasks created before lease tracking are treated as stale after a short
+    // grace period; new assignments record their lease in KV immediately.
     if (this.params.isWorkerAlive) {
+      const now = Date.now();
       const assignedTasks = getTasksByGoal(this.params.db, goal.id)
         .filter((t) => (t.status === "assigned" || t.status === "running") && t.assignedTo);
+
       for (const task of assignedTasks) {
         const assignedAddress = task.assignedTo!;
         const isSelfAssigned = assignedAddress === this.params.identity.address;
-        const alive = isSelfAssigned ? true : this.params.isWorkerAlive(assignedAddress);
-        if (!alive) {
-          logger.warn("Recovering stale task from dead worker", {
+        if (isSelfAssigned) {
+          continue;
+        }
+
+        const alive = this.params.isWorkerAlive(assignedAddress);
+        const leaseKey = `orchestrator.task_lease.${task.id}`;
+        const leaseValue = this.params.db
+          .prepare("SELECT value FROM kv WHERE key = ?")
+          .get(leaseKey) as { value?: string } | undefined;
+        const leaseOrigin = task.metadata.startedAt ?? leaseValue?.value ?? task.metadata.createdAt;
+        const leaseStartedAt = new Date(leaseOrigin).getTime();
+        const timeoutMs = Math.max(60_000, Number(task.metadata.timeoutMs) || 300_000);
+        const ageMs = Number.isFinite(leaseStartedAt) ? Math.max(0, now - leaseStartedAt) : 0;
+        const legacyStale = !task.metadata.startedAt && !leaseValue?.value && ageMs >= 120_000;
+        const timedOut = ageMs >= timeoutMs;
+
+        if (!alive || legacyStale || timedOut) {
+          logger.warn("Recovering stale task lease", {
             taskId: task.id,
             worker: assignedAddress,
             previousStatus: task.status,
+            alive,
+            ageMs,
+            timeoutMs,
+            legacyStale,
+            timedOut,
           });
           this.params.db.prepare(
             "UPDATE task_graph SET status = 'pending', assigned_to = NULL, started_at = NULL WHERE id = ?",
           ).run(task.id);
+          this.params.db.prepare("DELETE FROM kv WHERE key = ?").run(leaseKey);
+
+          // Prevent an expired remote child from immediately winning the same
+          // stale task again while its local status still says it is running.
+          if (timedOut && alive && !assignedAddress.startsWith("local://")) {
+            this.params.db.prepare(
+              "UPDATE children SET status = 'failed', last_checked = datetime('now') WHERE address = ?",
+            ).run(assignedAddress);
+          }
         }
       }
     }
@@ -560,6 +590,9 @@ export class Orchestrator {
       try {
         const assignment = await this.matchTaskToAgent(task);
         assignTask(this.params.db, task.id, assignment.agentAddress);
+        this.params.db.prepare(
+          "INSERT OR REPLACE INTO kv (key, value, updated_at) VALUES (?, ?, datetime('now'))",
+        ).run(`orchestrator.task_lease.${task.id}`, new Date().toISOString());
 
         const isLocalWorker = assignment.agentAddress.startsWith("local://");
         const isSelfAssigned = assignment.agentAddress === this.params.identity?.address;
