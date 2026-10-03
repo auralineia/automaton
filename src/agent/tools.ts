@@ -3496,6 +3496,29 @@ export async function executeTool(
       };
     }
 
+    // In sovereign mode the compact invoke_tool wrapper can bypass the
+    // filtered tool catalog because dispatch resolves against the full registry.
+    // Enforce the active-goal guard again at this final boundary so an existing
+    // goal cannot cause repeated duplicate-goal calls.
+    if (
+      targetName === "create_goal" &&
+      context.inputSource !== "creator"
+    ) {
+      const activeGoal = context.db.raw
+        .prepare("SELECT 1 FROM goals WHERE status = 'active' LIMIT 1")
+        .get();
+      if (activeGoal) {
+        return {
+          id: ulid(),
+          name: toolName,
+          arguments: args,
+          result: "BLOCKED: an active goal already exists; continue the existing execution instead of creating another goal.",
+          durationMs: Date.now() - startTime,
+          error: "Active goal already exists.",
+        };
+      }
+    }
+
     const delegated = await executeTool(
       targetName,
       targetArgs,
