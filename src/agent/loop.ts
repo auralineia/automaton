@@ -428,9 +428,19 @@ export async function runAgentLoop(
     let claimedMessages: InboxMessageRow[] = [];
 
     try {
-      // Check if we should be sleeping
+      // A queued creator command must wake the loop even if a prior
+      // autonomous turn left a future sleep_until timestamp behind.
+      const creatorWaiting = !!db.raw.prepare(
+        "SELECT 1 FROM inbox_messages WHERE status = 'received' AND from_address = 'dashboard://creator' LIMIT 1",
+      ).get();
+      // Check if we should be sleeping, but never sleep through creator work.
       const sleepUntil = db.getKV("sleep_until");
-      if (sleepUntil && new Date(sleepUntil) > new Date()) {
+      if (
+        sleepUntil &&
+        new Date(sleepUntil) > new Date() &&
+        !creatorWaiting &&
+        pendingInput?.source !== "creator"
+      ) {
         log(config, `[SLEEP] Sleeping until ${sleepUntil}`);
         // IMPORTANT: mark agent as sleeping so the outer runtime pauses instead of immediately re-running.
         db.setAgentState("sleeping");
