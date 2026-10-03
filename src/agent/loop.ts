@@ -456,6 +456,40 @@ export async function runAgentLoop(
     logger.info("[CREATOR] Cleared legacy persistence-test task from active queue.");
   }
 
+  // Clear the old persistence smoke-test goal/task from the durable orchestration queue.
+  // That test already passed, and leaving it active makes the sovereign agent repeatedly
+  // re-read the same test file forever after a restart. This cleanup is deliberately narrow
+  // and only matches the known legacy test markers.
+  try {
+    const legacyGoals = db.raw.prepare(
+      "SELECT id FROM goals " +
+      "WHERE lower(COALESCE(title, '')) LIKE '%teste-persistencia%' " +
+      "OR lower(COALESCE(description, '')) LIKE '%teste-persistencia%' " +
+      "OR lower(COALESCE(title, '')) LIKE '%teste de persistência%' " +
+      "OR lower(COALESCE(description, '')) LIKE '%teste de persistência%' " +
+      "OR lower(COALESCE(title, '')) LIKE '%ritty persistente ok%' " +
+      "OR lower(COALESCE(description, '')) LIKE '%ritty persistente ok%'",
+    ).all() as Array<{ id: string }>;
+
+    for (const goal of legacyGoals) {
+      const now = new Date().toISOString();
+      db.raw.prepare(
+        "UPDATE task_graph SET status = 'completed', assigned_to = NULL, completed_at = COALESCE(completed_at, ?) " +
+        "WHERE goal_id = ? AND status IN ('pending', 'assigned', 'running')",
+      ).run(now, goal.id);
+      db.raw.prepare(
+        "UPDATE goals SET status = 'completed', completed_at = COALESCE(completed_at, ?) " +
+        "WHERE id = ? AND status = 'active'",
+      ).run(now, goal.id);
+      logger.info('[ORCHESTRATION] Cleared legacy persistence-test goal from autonomous queue.', {
+        goalId: goal.id,
+      });
+    }
+  } catch (error) {
+    logger.warn(
+      `[ORCHESTRATION] Legacy persistence-test cleanup skipped: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   // Set start time
   if (!db.getKV("start_time")) {
     db.setKV("start_time", new Date().toISOString());
