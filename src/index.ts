@@ -564,8 +564,8 @@ async function run(): Promise<void> {
           `[${new Date().toISOString()}] Sleeping for ${Math.round(sleepMs / 1000)}s`,
         );
 
-        // Sleep, but check for wake requests periodically
-        const checkInterval = Math.min(sleepMs, 30_000);
+        // Sleep, but check for wake requests frequently so creator commands wake RITTY quickly.
+        const checkInterval = Math.min(sleepMs, 3_000);
         let slept = 0;
         while (slept < sleepMs) {
           await sleep(checkInterval);
