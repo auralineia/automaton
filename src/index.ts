@@ -248,23 +248,25 @@ async function run(): Promise<void> {
     // an old RITTY_MODEL or persisted Conway model (for example gpt-5.2)
     // from being sent to Groq.
     const requestedSovereignModel = process.env.RITTY_MODEL;
+    // GPT-OSS 20B is exhausted in the current Groq rolling token window.
+    // Use GPT-OSS 120B for every sovereign tier so the runtime can continue
+    // instead of repeatedly falling through to exhausted Gemini.
     const allowedSovereignModels = new Set([
       "openai/gpt-oss-120b",
-      "openai/gpt-oss-20b",
     ]);
     config.inferenceModel =
       requestedSovereignModel && allowedSovereignModels.has(requestedSovereignModel)
         ? requestedSovereignModel
         : "openai/gpt-oss-120b";
 
-    // Normalize every persisted strategy field so the inference router
-    // cannot revive stale Conway/OpenAI models such as gpt-5.2.
+    // Normalize every persisted strategy field so stale 20B/Conway models
+    // cannot be revived by the inference router.
     config.modelStrategy = {
       ...DEFAULT_MODEL_STRATEGY_CONFIG,
       ...(config.modelStrategy ?? {}),
-      inferenceModel: config.inferenceModel,
-      lowComputeModel: "openai/gpt-oss-20b",
-      criticalModel: "openai/gpt-oss-20b",
+      inferenceModel: "openai/gpt-oss-120b",
+      lowComputeModel: "openai/gpt-oss-120b",
+      criticalModel: "openai/gpt-oss-120b",
     };
 
     saveConfig(config);
