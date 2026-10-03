@@ -694,6 +694,7 @@ export async function runAgentLoop(
         const toolCallMessages: any[] = [];
         let callCount = 0;
         const currentInputSource = currentInput?.source as InputSource | undefined;
+        toolContext.inputSource = currentInputSource;
 
         for (const tc of response.toolCalls) {
           if (callCount >= MAX_TOOL_CALLS_PER_TURN) {
