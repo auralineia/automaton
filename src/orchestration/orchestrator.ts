@@ -529,16 +529,22 @@ export class Orchestrator {
     }
 
     // Recover stale tasks: workers that died (process restart, sandbox crash)
-    // leave tasks stuck in 'assigned' forever. Detect and reset them.
+    // can leave tasks stuck in 'assigned' or 'running'. A local worker lives
+    // only in this process, so after a restart any persisted local:// assignment
+    // is stale and must be returned to the ready queue. Never treat the parent
+    // automaton's own address as a dead worker.
     if (this.params.isWorkerAlive) {
       const assignedTasks = getTasksByGoal(this.params.db, goal.id)
-        .filter((t) => t.status === "assigned" && t.assignedTo);
+        .filter((t) => (t.status === "assigned" || t.status === "running") && t.assignedTo);
       for (const task of assignedTasks) {
-        const alive = this.params.isWorkerAlive(task.assignedTo!);
+        const assignedAddress = task.assignedTo!;
+        const isSelfAssigned = assignedAddress === this.params.identity.address;
+        const alive = isSelfAssigned ? true : this.params.isWorkerAlive(assignedAddress);
         if (!alive) {
           logger.warn("Recovering stale task from dead worker", {
             taskId: task.id,
-            worker: task.assignedTo,
+            worker: assignedAddress,
+            previousStatus: task.status,
           });
           this.params.db.prepare(
             "UPDATE task_graph SET status = 'pending', assigned_to = NULL, started_at = NULL WHERE id = ?",
