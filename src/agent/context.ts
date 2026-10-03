@@ -221,8 +221,21 @@ export function buildContextMessages(
     }
   }
 
-  // Add pending input if any
+  // Add pending input if any. Creator commands get an explicit system
+  // directive immediately before the user message so the model cannot mistake
+  // them for background/status work.
   if (pendingInput) {
+    if (pendingInput.source === "creator") {
+      messages.push({
+        role: "system",
+        content:
+          "CREATOR TASK EXECUTION: This is an explicit command from the creator. " +
+          "Act on it now. Do not check credits/status, do not create an orchestration goal, " +
+          "do not sleep, and do not merely describe a plan. Use concrete tools to inspect, modify, " +
+          "test, and verify the requested work. Continue across turns until the requested work is " +
+          "actually completed or a specific blocker is reached.",
+      });
+    }
     messages.push({
       role: "user",
       content: `[${pendingInput.source}] ${pendingInput.content}`,
