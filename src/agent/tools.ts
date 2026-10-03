@@ -2834,11 +2834,29 @@ Model: ${ctx.inference.getDefaultModel()}
         const strategy =
           typeof args.strategy === "string" ? args.strategy.trim() : undefined;
 
+        // Resolve active goals before validating model-provided fields so malformed
+        // autonomous create_goal calls are still blocked rather than falling through
+        // with errors such as "goal title cannot be empty".
+        const activeGoals = getActiveGoals(ctx.db.raw);
+
+        // Keep autonomous execution sequential. Creator commands are handled
+        // directly by the creator-tool path and never create background goals.
+        if (ctx.inputSource !== "creator" && activeGoals.length >= 1) {
+          const current = activeGoals[0];
+          return (
+            `BLOCKED: An active goal already exists and must be continued:
+` +
+            `"${current.title}" (id: ${current.id}, status: ${current.status})
+
+` +
+            `Do not create another goal. Continue the existing goal through the orchestrator.`
+          );
+        }
+
         if (!title) return "Error: goal title cannot be empty.";
         if (!description) return "Error: goal description cannot be empty.";
 
         // Dedup: reject if a similar active goal already exists
-        const activeGoals = getActiveGoals(ctx.db.raw);
         const titleLower = title.toLowerCase();
         const duplicate = activeGoals.find(
           (g) =>
