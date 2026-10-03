@@ -639,8 +639,30 @@ export async function runAgentLoop(
           timeout_ms: number;
         }>;
 
+        const creatorExecutionActive = creatorTaskActive || pendingInput?.source === "creator";
+
         for (const task of staleTasks) {
-          if (task.assigned_to === identity.address) continue;
+          const isSelfAssigned = task.assigned_to === identity.address;
+
+          if (isSelfAssigned) {
+            // The parent cannot execute an autonomous task while an explicit
+            // creator command is being processed. Release the old self-assigned
+            // lease so it can be picked up by a worker after the creator task.
+            const selfLeaseOrigin = task.started_at ?? task.created_at;
+            const selfAgeMs = Math.max(0, now - new Date(selfLeaseOrigin).getTime());
+            if (creatorExecutionActive && selfAgeMs >= 60_000) {
+              logger.warn("[ORCHESTRATION] Releasing stale self-assigned task while creator command is active", {
+                taskId: task.id,
+                previousStatus: task.status,
+                ageMs: selfAgeMs,
+              });
+              db.raw.prepare(
+                "UPDATE task_graph SET status = 'pending', assigned_to = NULL, started_at = NULL WHERE id = ?",
+              ).run(task.id);
+              db.raw.prepare("DELETE FROM kv WHERE key = ?").run(`orchestrator.task_lease.${task.id}`);
+            }
+            continue;
+          }
 
           let alive = false;
           if (task.assigned_to.startsWith("local://")) {
