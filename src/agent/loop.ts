@@ -845,8 +845,10 @@ export async function runAgentLoop(
             "The runtime root package.json, config.json, wallet.json, state database, SOUL.md, " +
             "policy/guard files, and other protected runtime files are read-only. NEVER attempt to write, " +
             "replace, or install dependencies through those files. For coding tasks, use the existing " +
-            "Node.js runtime and built-in modules whenever possible, create application source files in " +
-            "./workspace/<project>, and verify them with the exec tool. Do not stop at a plan or explanation.",
+            "Node.js runtime and built-in modules whenever possible. The sovereign sandbox home is /root; " +
+            "do NOT use /home/ritty, /home/agent, or other assumed home directories. Create application source files in " +
+            "/root/workspace/<project> (or ./workspace/<project>) and verify them with the exec tool. Node.js and pnpm " +
+            "are available at runtime; npm and Python may not be installed. Do not stop at a plan or explanation.",
         });
       }
 
