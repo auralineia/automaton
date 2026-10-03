@@ -91,9 +91,10 @@ async function load(){
     const acts=(d.recentTurns||[]).slice(0,8); $("activityCount").textContent=acts.length+" events";
     $("activityFeed").innerHTML=acts.length?acts.map(t=>'<div class="feed-row"><div class="feed-dot '+(t.state==="error"?"bad":"")+'"></div><div><b>Turn '+esc(t.id.slice(0,8))+'</b><small>'+esc(fmtTime(t.timestamp))+' · '+esc(t.state)+'</small></div><strong>'+esc(t.toolCalls||0)+' tools</strong></div>').join(""):'<div class="chat-empty">Sem atividade recente.</div>';
     renderChat(d);
-    if(d.chatPending && d.chatPending.status === "failed"){ $("chatHint").textContent="RITTY não conseguiu executar a tarefa ainda. Verifique o estado do provedor."; }
-    else if(d.chatPending && d.chatPending.status === "received"){ $("chatHint").textContent="Tarefa na fila. RITTY aguardará uma janela de inferência disponível."; }
+    if(d.chatPending && d.chatPending.status === "failed"){ $("chatHint").textContent="RITTY não conseguiu executar esta tarefa. A tentativa máxima foi atingida."; }
+    else if(d.chatPending && d.chatPending.status === "received"){ $("chatHint").textContent="Tarefa na fila — aguardando a próxima execução do RITTY."; }
     else if(d.chatPending && d.chatPending.status === "in_progress"){ $("chatHint").textContent="RITTY está processando esta tarefa agora…"; }
+    else if(d.chatPending && d.chatPending.status === "processed"){ $("chatHint").textContent="Tarefa processada pelo RITTY."; }
   }catch(e){$("roomStatus").textContent="OFFLINE";}
 }
 $("chatForm").addEventListener("submit",async e=>{
@@ -102,7 +103,7 @@ $("chatForm").addEventListener("submit",async e=>{
   try{
     const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message})});
     const d=await r.json(); if(!r.ok) throw Error(d.error||"Falha ao enviar");
-    input.value=""; $("chatHint").textContent="Enviado. RITTY vai processar na próxima execução."; load();
+    input.value=""; $("chatHint").textContent="Enviado ao runtime. Acompanhe o estado abaixo."; await load();
   }catch(err){$("chatHint").textContent=String(err.message||err);}
   finally{$("chatSend").disabled=false;input.focus();}
 });
@@ -233,7 +234,21 @@ function buildSnapshot(db: AutomatonDatabase, config: AutomatonConfig) {
     skills,
     heartbeats,
     children,
-    chatTurns: db.raw.prepare("SELECT id,timestamp,input,input_source,thinking FROM turns WHERE input_source IN ('creator','agent') AND input IS NOT NULL ORDER BY timestamp DESC LIMIT 24").all().map((row: any) => ({ id: String(row.id), timestamp: String(row.timestamp), input: String(row.input ?? ""), inputSource: String(row.input_source ?? "agent"), response: String(row.thinking ?? "") })).reverse(),
+    chatTurns: db.raw.prepare("SELECT id,timestamp,input,input_source,thinking,tool_calls,state FROM turns WHERE input_source IN ('creator','agent') AND input IS NOT NULL ORDER BY timestamp DESC LIMIT 24").all().map((row: any) => ({
+      id: String(row.id),
+      timestamp: String(row.timestamp),
+      input: String(row.input ?? ""),
+      inputSource: String(row.input_source ?? "agent"),
+      response: (() => {
+        const thinking = String(row.thinking ?? "").trim();
+        if (thinking) return thinking;
+        try {
+          const tools = JSON.parse(String(row.tool_calls || "[]"));
+          if (Array.isArray(tools) && tools.length) return `Concluído — ${tools.length} ferramenta(s) executada(s).`;
+        } catch {}
+        return row.state === "error" ? "Falha ao processar esta tarefa." : "Tarefa concluída.";
+      })(),
+    })).reverse(),
     chatPending: (() => {
       const row = db.raw.prepare("SELECT id,content,status,received_at,retry_count,max_retries FROM inbox_messages WHERE from_address = ? ORDER BY received_at DESC LIMIT 1").get("dashboard://creator") as any;
       if (!row) return null;
