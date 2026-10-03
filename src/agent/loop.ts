@@ -468,7 +468,9 @@ export async function runAgentLoop(
       "OR lower(COALESCE(title, '')) LIKE '%teste de persistência%' " +
       "OR lower(COALESCE(description, '')) LIKE '%teste de persistência%' " +
       "OR lower(COALESCE(title, '')) LIKE '%ritty persistente ok%' " +
-      "OR lower(COALESCE(description, '')) LIKE '%ritty persistente ok%'",
+      "OR lower(COALESCE(description, '')) LIKE '%ritty persistente ok%' " +
+      "OR lower(COALESCE(title, '')) LIKE '%teste-persistencia.txt%' " +
+      "OR lower(COALESCE(description, '')) LIKE '%teste-persistencia.txt%'",
     ).all() as Array<{ id: string }>;
 
     for (const goal of legacyGoals) {
