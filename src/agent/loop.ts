@@ -410,7 +410,7 @@ export async function runAgentLoop(
     for (const task of selfTasks) {
       const goalText = `${task.title} ${task.description}`.toLowerCase();
       const financialLike =
-        /(wallet|transfer|trading|trade|investment|invest|payment|money|finance|financial|crypto|bitcoin|usdc|currency|exchange|payment)/i.test(goalText);
+        /(wallet|transfer|trading|trade|investment|invest|payment|crypto|bitcoin|usdc|currency|exchange|bank|purchase|withdrawal|deposit|transaction)/i.test(goalText);
       if (financialLike) continue;
 
       const origin = task.started_at ?? task.created_at;
@@ -611,26 +611,9 @@ export async function runAgentLoop(
         }
       }
 
-      // Never autonomously advance a financial/crypto goal. Keep the goal
-      // persisted and visible, but park the parent loop until the creator sends
-      // an explicit non-financial command.
-      if (pendingInput?.source !== "creator") {
-        const activeGoals = getActiveGoals(db.raw);
-        const autonomousFinancialGoal = activeGoals.some((goal) =>
-          /(wallet|transfer|trading|trade|investment|invest|payment|crypto|bitcoin|usdc|currency|exchange|bank|purchase|withdrawal|deposit|transaction)/i.test(
-            `${goal.title} ${goal.description}`,
-          ),
-        );
-
-        if (autonomousFinancialGoal) {
-          logger.info("[ORCHESTRATION] Financial goal held safely; waiting for creator command.");
-          db.setKV("sleep_until", new Date(Date.now() + 300_000).toISOString());
-          db.setAgentState("sleeping");
-          onStateChange?.("sleeping");
-          running = false;
-          break;
-        }
-      }
+      // Financial goals may be researched, planned, and prepared autonomously.
+      // Money-moving or legally binding actions remain gated by tool policy and
+      // explicit creator approval; a goal label alone must not park the runtime.
 
       // Refresh financial state periodically
       financial = await getFinancialState(conway, identity.address, db, config.chainType || identity.chainType || "evm");
@@ -778,7 +761,7 @@ export async function runAgentLoop(
             // goals automatically.
             const goalText = `${task.goal_title ?? ""} ${task.goal_description ?? ""}`.toLowerCase();
             const financialLike =
-              /(wallet|transfer|trading|trade|investment|invest|payment|money|finance|financial|crypto|bitcoin|usdc|currency|exchange)/i.test(goalText);
+              /(wallet|transfer|trading|trade|investment|invest|payment|crypto|bitcoin|usdc|currency|exchange|bank|purchase|withdrawal|deposit|transaction)/i.test(goalText);
             const selfLeaseOrigin = task.started_at ?? task.created_at;
             const selfAgeMs = Math.max(0, now - new Date(selfLeaseOrigin).getTime());
             const selfTimeoutMs = Math.max(60_000, Number(task.timeout_ms) || 300_000);
