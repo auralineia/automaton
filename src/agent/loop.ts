@@ -404,10 +404,10 @@ export async function runAgentLoop(
   const maxCycleTurns = config.maxTurnsPerCycle ?? 25;
   let cycleTurnCount = 0;
 
-  let pendingInput: { content: string; source: string } | undefined = {
-    content: wakeupInput,
-    source: "wakeup",
-  };
+  // Check creator/inbox work before the synthetic wakeup prompt.
+  // This prevents dashboard commands from waiting behind a wakeup turn.
+  let pendingInput: { content: string; source: string } | undefined;
+  let wakeupPending = true;
 
   while (running) {
     // Declared outside try so the catch block can access for retry/failure handling
@@ -441,6 +441,9 @@ export async function runAgentLoop(
             })
             .join("\n\n");
           pendingInput = { content: formatted, source: "agent" };
+        } else if (wakeupPending) {
+          pendingInput = { content: wakeupInput, source: "wakeup" };
+          wakeupPending = false;
         }
       }
 
