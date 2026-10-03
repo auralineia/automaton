@@ -604,7 +604,7 @@ export async function runAgentLoop(
         messages.splice(1, 0, { role: "system", content: memoryBlock });
       }
 
-      if (orchestrator) {
+      if (orchestrator && pendingInput?.source !== "creator") {
         const orchestratorTick = await orchestrator.tick();
         db.setKV("orchestrator.last_tick", JSON.stringify(orchestratorTick));
         const localWorkersActive = workerPool?.getActiveCount() ?? 0;
@@ -698,7 +698,37 @@ export async function runAgentLoop(
       const survivalTier = getSurvivalTier(financial.creditsCents);
       log(config, `[THINK] Routing inference (tier: ${survivalTier}, model: ${inference.getDefaultModel()})...`);
 
-      const inferenceTools = toolsToInferenceFormat(tools);
+      const CREATOR_BLOCKED_TOOLS = new Set([
+        "check_credits",
+        "check_usdc_balance",
+        "orchestrator_status",
+        "list_goals",
+        "get_plan",
+        "create_goal",
+        "sleep",
+        "modify_heartbeat",
+        "topup_credits",
+        "transfer_credits",
+      ]);
+      const creatorToolSet = new Set([
+        "read_file",
+        "exec",
+        "write_file",
+        "edit_own_file",
+        "git_status",
+        "git_diff",
+        "git_commit",
+        "git_push",
+        "git_pull",
+        "git_clone",
+        "git_branch",
+        "review_upstream_changes",
+      ]);
+      const inferenceToolSource =
+        currentInput?.source === "creator"
+          ? tools.filter((tool) => creatorToolSet.has(tool.name) && !CREATOR_BLOCKED_TOOLS.has(tool.name))
+          : tools;
+      const inferenceTools = toolsToInferenceFormat(inferenceToolSource);
       const routerResult = await inferenceRouter.route(
         {
           messages: messages,
@@ -786,6 +816,15 @@ export async function runAgentLoop(
 
       // ── Persist Turn (atomic: turn + tool calls + inbox ack) ──
       const claimedIds = claimedMessages.map((m) => m.id);
+      if (currentInput?.source === "creator") {
+        const CREATOR_MUTATING_TOOLS = new Set([
+          "exec", "write_file", "edit_own_file", "git_commit", "git_push",
+          "git_pull", "git_clone", "git_branch",
+        ]);
+        if (turn.toolCalls.some((tc) => CREATOR_MUTATING_TOOLS.has(getObservedToolName(tc)) && !tc.error)) {
+          db.setKV("creator_task_progress", "1");
+        }
+      }
       db.runTransaction(() => {
         db.insertTurn(turn);
         for (const tc of turn.toolCalls) {
@@ -986,8 +1025,27 @@ export async function runAgentLoop(
         // A text-only response closes a creator task; tool-only turns retain
         // the task so the next loop iteration continues from saved history.
         if (currentInput?.source === "creator") {
-          db.deleteKV("creator_task_active");
-          log(config, "[CREATOR] Task turn returned a final text response.");
+          const creatorProgress = db.getKV("creator_task_progress") === "1";
+          if (creatorProgress) {
+            db.deleteKV("creator_task_active");
+            db.deleteKV("creator_task_progress");
+            log(config, "[CREATOR] Task returned final text after concrete implementation progress.");
+          } else {
+            // Do not let the model terminate an untouched creator task with prose.
+            // Requeue the active task immediately for another implementation turn.
+            const activeCreator = db.getKV("creator_task_active") || currentInput.content;
+            db.setKV("creator_task_active", activeCreator);
+            pendingInput = {
+              content:
+                "CONTINUE THE CREATOR TASK NOW. The previous turn produced no concrete tool action. " +
+                "Do not answer with a plan or status. Use read_file/exec/edit_own_file/git tools to make an actual change. " +
+                "Do not finish until you have made and verified a concrete implementation change.\n" +
+                activeCreator,
+              source: "creator",
+            };
+            db.deleteKV("sleep_until");
+            log(config, "[CREATOR] Text-only response rejected; continuing task until concrete work is performed.");
+          }
         }
         // Agent produced text without tool calls.
         // This is a natural pause point -- no work queued, sleep briefly.
