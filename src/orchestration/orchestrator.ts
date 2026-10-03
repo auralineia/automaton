@@ -577,6 +577,38 @@ export class Orchestrator {
     const ready = getReadyTasks(this.params.db)
       .filter((task) => task.goalId === goal.id);
 
+    // Runtime diagnostic: make the persisted execution state observable so a
+    // stuck assignment can be distinguished from a live-but-slow worker.
+    const activeExecutionRows = getTasksByGoal(this.params.db, goal.id)
+      .filter((task) => (task.status === "assigned" || task.status === "running") && task.assignedTo);
+    if (activeExecutionRows.length > 0) {
+      const now = Date.now();
+      logger.info("[ORCHESTRATION] Active execution snapshot", {
+        goalId: goal.id,
+        tasks: activeExecutionRows.map((task) => {
+          const leaseKey = `orchestrator.task_lease.${task.id}`;
+          const leaseValue = this.params.db
+            .prepare("SELECT value FROM kv WHERE key = ?")
+            .get(leaseKey) as { value?: string } | undefined;
+          const origin = task.startedAt ?? leaseValue?.value ?? task.createdAt;
+          const ageMs = Number.isFinite(new Date(origin).getTime())
+            ? Math.max(0, now - new Date(origin).getTime())
+            : null;
+          const address = task.assignedTo ?? "";
+          const alive = this.params.isWorkerAlive ? this.params.isWorkerAlive(address) : null;
+          return {
+            id: task.id,
+            status: task.status,
+            role: task.agentRole,
+            worker: address.startsWith("local://") ? address.slice(0, 24) : address.slice(0, 16),
+            ageSec: ageMs == null ? null : Math.round(ageMs / 1000),
+            timeoutSec: Math.round(Math.max(60_000, Number(task.timeoutMs) || 300_000) / 1000),
+            alive,
+          };
+        }),
+      });
+    }
+
     for (const task of ready) {
       try {
         const assignment = await this.matchTaskToAgent(task);
