@@ -218,7 +218,7 @@ async function run(): Promise<void> {
       inferenceModel: process.env.RITTY_MODEL || "openai/gpt-oss-120b",
       maxTokensPerTurn: Number(process.env.RITTY_MAX_TOKENS || 8192),
       heartbeatConfigPath: "~/.automaton/heartbeat.yml",
-      dbPath: "~/.automaton/state.db",
+      dbPath: process.env.RITTY_DB_PATH || "/root/.automaton/state.db",
       logLevel: "info",
       walletAddress: walletPreview.chainIdentity.address,
       version: VERSION,
@@ -286,9 +286,18 @@ async function run(): Promise<void> {
     process.exit(1);
   }
 
-  // Initialize database
-  const dbPath = resolvePath(config.dbPath);
+  // Initialize database.
+  // On Railway, ~/.automaton is mounted to the persistent volume. Allow an
+  // explicit override while keeping the existing config as the fallback.
+  const dbPath = resolvePath(
+    process.env.RITTY_DB_PATH || config.dbPath || "~/.automaton/state.db",
+  );
   const db = createDatabase(dbPath);
+  db.setKV("runtime_last_boot", new Date().toISOString());
+  db.setKV("runtime_db_path", dbPath);
+  logger.info(
+    `[${new Date().toISOString()}] Persistent SQLite database: ${dbPath}`,
+  );
   startDashboardServer({ db, config });
 
   // Persist createdAt: only set if not already stored (never overwrite)
