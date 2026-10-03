@@ -620,6 +620,74 @@ export async function runAgentLoop(
         messages.splice(1, 0, { role: "system", content: memoryBlock });
       }
 
+      // Recover stale orchestration work even while a creator command is active.
+      // Creator execution intentionally bypasses orchestrator.tick(), so stale
+      // assignments must be recovered independently or they can remain stuck forever.
+      if (orchestrator) {
+        const now = Date.now();
+        const staleTasks = db.raw.prepare(
+          `SELECT id, assigned_to, status, started_at, created_at, timeout_ms
+           FROM task_graph
+           WHERE status IN ('assigned', 'running')
+             AND assigned_to IS NOT NULL`,
+        ).all() as Array<{
+          id: string;
+          assigned_to: string;
+          status: string;
+          started_at: string | null;
+          created_at: string;
+          timeout_ms: number;
+        }>;
+
+        for (const task of staleTasks) {
+          if (task.assigned_to === identity.address) continue;
+
+          let alive = false;
+          if (task.assigned_to.startsWith("local://")) {
+            alive = workerPool?.hasWorker(task.assigned_to) ?? false;
+          } else {
+            const child = db.raw.prepare(
+              "SELECT status FROM children WHERE sandbox_id = ? OR address = ?",
+            ).get(task.assigned_to, task.assigned_to) as { status: string } | undefined;
+            alive = !!child && !["failed", "dead", "cleaned_up"].includes(child.status);
+          }
+
+          const leaseKey = `orchestrator.task_lease.${task.id}`;
+          const leaseValue = db.raw.prepare(
+            "SELECT value FROM kv WHERE key = ?",
+          ).get(leaseKey) as { value?: string } | undefined;
+          const leaseOrigin = task.started_at ?? leaseValue?.value ?? task.created_at;
+          const leaseStartedAt = new Date(leaseOrigin).getTime();
+          const timeoutMs = Math.max(60_000, Number(task.timeout_ms) || 300_000);
+          const ageMs = Number.isFinite(leaseStartedAt) ? Math.max(0, now - leaseStartedAt) : 0;
+          const legacyStale = !task.started_at && !leaseValue?.value && ageMs >= 120_000;
+          const timedOutRemote = !task.assigned_to.startsWith("local://") && ageMs >= timeoutMs;
+
+          if (!alive || legacyStale || timedOutRemote) {
+            logger.warn("[ORCHESTRATION] Recovering stale task outside orchestrator tick", {
+              taskId: task.id,
+              worker: task.assigned_to,
+              previousStatus: task.status,
+              alive,
+              ageMs,
+              timeoutMs,
+              legacyStale,
+              timedOutRemote,
+            });
+            db.raw.prepare(
+              "UPDATE task_graph SET status = 'pending', assigned_to = NULL, started_at = NULL WHERE id = ?",
+            ).run(task.id);
+            db.raw.prepare("DELETE FROM kv WHERE key = ?").run(leaseKey);
+
+            if (timedOutRemote && alive) {
+              db.raw.prepare(
+                "UPDATE children SET status = 'failed', last_checked = datetime('now') WHERE address = ?",
+              ).run(task.assigned_to);
+            }
+          }
+        }
+      }
+
       if (orchestrator && pendingInput?.source !== "creator") {
         const orchestratorTick = await orchestrator.tick();
         db.setKV("orchestrator.last_tick", JSON.stringify(orchestratorTick));
