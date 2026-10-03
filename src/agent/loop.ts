@@ -607,6 +607,27 @@ export async function runAgentLoop(
         }
       }
 
+      // Never autonomously advance a financial/crypto goal. Keep the goal
+      // persisted and visible, but park the parent loop until the creator sends
+      // an explicit non-financial command.
+      if (pendingInput?.source !== "creator") {
+        const activeGoals = getActiveGoals(db.raw);
+        const autonomousFinancialGoal = activeGoals.some((goal) =>
+          /(wallet|transfer|trading|trade|investment|invest|payment|money|finance|financial|crypto|bitcoin|usdc|currency|exchange|bank)/i.test(
+            `${goal.title} ${goal.description}`,
+          ),
+        );
+
+        if (autonomousFinancialGoal) {
+          logger.info("[ORCHESTRATION] Financial goal held safely; waiting for creator command.");
+          db.setKV("sleep_until", new Date(Date.now() + 300_000).toISOString());
+          db.setAgentState("sleeping");
+          onStateChange?.("sleeping");
+          running = false;
+          break;
+        }
+      }
+
       // Refresh financial state periodically
       financial = await getFinancialState(conway, identity.address, db, config.chainType || identity.chainType || "evm");
 
