@@ -588,6 +588,10 @@ export async function runAgentLoop(
         ).get(identity.address);
 
         if (
+          // Never park the parent loop while a creator command is waiting.
+          // Creator commands must reach inference immediately even when
+          // autonomous worker agents are active on an unrelated goal.
+          pendingInput?.source !== "creator" &&
           orchestratorTick.phase === "executing" &&
           orchestratorTick.tasksAssigned === 0 &&
           orchestratorTick.tasksCompleted === 0 &&
@@ -639,6 +643,23 @@ export async function runAgentLoop(
             "One credit check is enough unless a real decision requires a fresh balance. " +
             "After a successful status check, execute ONE concrete useful task from your goals/genesis prompt, " +
             "or sleep if there is genuinely no work. Do not call the same status tool on consecutive turns.",
+        });
+      }
+
+      // Creator-command override: the dashboard is an explicit instruction
+      // from the owner and must be acted on in the current turn.
+      if (pendingInput?.source === "creator") {
+        messages.push({
+          role: "system",
+          content:
+            "CREATOR COMMAND — HIGHEST PRIORITY: The user/creator has just sent the task " +
+            "shown in the current input. Execute that task NOW using the available tools. " +
+            "Do NOT call check_credits, orchestrator_status, list_goals, get_plan, or create_goal " +
+            "as a preliminary step. Do NOT sleep. Do NOT defer the task to a background goal. " +
+            "Do NOT merely describe what you would do. Start the concrete implementation immediately. " +
+            "Use as many tool calls as needed within the normal per-turn limit, then continue on " +
+            "subsequent turns until the requested work is actually completed and verified. " +
+            "Never perform financial transfers or wallet operations for this creator task.",
         });
       }
 
