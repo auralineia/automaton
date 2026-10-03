@@ -43,6 +43,7 @@ import {
   markInboxFailed,
   resetInboxToReceived,
   consumeNextWakeEvent,
+  getActiveGoals,
 } from "../state/database.js";
 import type { InboxMessageRow } from "../state/database.js";
 import { ulid } from "ulid";
@@ -842,9 +843,7 @@ export async function runAgentLoop(
       // cannot re-enter create_goal.
       const activeGoalExists =
         currentInput?.source !== "creator" &&
-        !!db.raw.prepare(
-          "SELECT 1 FROM goals WHERE status NOT IN ('completed', 'cancelled', 'failed') LIMIT 1",
-        ).get();
+        getActiveGoals(db.raw).length > 0;
 
       const inferenceToolSource =
         currentInput?.source === "creator"
@@ -979,17 +978,26 @@ export async function runAgentLoop(
         (tc) => getObservedToolName(tc) === "create_goal" && tc.result?.includes("BLOCKED"),
       );
       if (blockedGoalCall && currentInput?.source !== "creator") {
-        // Exponential backoff when there is genuinely no active execution.
-        // When an existing task is running, wake quickly so the orchestrator can
-        // recover/reassign it instead of parking the runtime for several minutes.
+        // An active goal is already in progress. Do not park the parent loop:
+        // yield immediately back to the orchestrator and force the next model
+        // turn to continue the existing work. This removes the old 10s/120s+
+        // duplicate-goal sleep cycle.
+        if (getActiveGoals(db.raw).length > 0) {
+          db.deleteKV("blocked_goal_backoff");
+          pendingInput = {
+            content:
+              "DUPLICATE GOAL BLOCKED. An active goal already exists. " +
+              "Do NOT call create_goal again. Continue the existing active goal " +
+              "through the orchestrator and execute its pending work.",
+            source: "system",
+          };
+          log(config, "[LOOP] create_goal BLOCKED — continuing active goal without sleep.");
+          continue;
+        }
+
+        // No active goal exists: back off only when there is genuinely no work.
         const prevBackoff = parseInt(db.getKV("blocked_goal_backoff") || "0", 10);
-        const activeTaskRow = db.raw.prepare(
-          "SELECT COUNT(*) AS c FROM task_graph WHERE status IN ('assigned', 'running')",
-        ).get() as { c?: number } | undefined;
-        const hasActiveTask = Number(activeTaskRow?.c ?? 0) > 0;
-        const backoffMs = hasActiveTask
-          ? 10_000
-          : Math.min(prevBackoff > 0 ? prevBackoff * 2 : 120_000, 600_000);
+        const backoffMs = Math.min(prevBackoff > 0 ? prevBackoff * 2 : 120_000, 600_000);
         db.setKV("blocked_goal_backoff", String(backoffMs));
         log(config, `[LOOP] create_goal BLOCKED — sleeping ${Math.round(backoffMs / 1000)}s (backoff).`);
         db.setKV("sleep_until", new Date(Date.now() + backoffMs).toISOString());
