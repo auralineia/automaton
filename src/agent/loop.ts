@@ -436,20 +436,24 @@ export async function runAgentLoop(
     );
   }
 
-  // Recover the latest substantial creator request after a restart.
-  if (!db.getKV("creator_task_active")) {
-    try {
-      const row = db.raw.prepare(
-        "SELECT input,timestamp FROM turns WHERE input_source = 'creator' AND input IS NOT NULL ORDER BY timestamp DESC LIMIT 1",
-      ).get() as { input?: string; timestamp?: string } | undefined;
-      const input = String(row?.input ?? "").trim();
-      const age = row?.timestamp ? Date.now() - new Date(row.timestamp).getTime() : Infinity;
-      if (input.length > 100 && age >= 0 && age < 24 * 60 * 60 * 1000) {
-        db.setKV("creator_task_active", input);
-        db.deleteKV("sleep_until");
-        logger.info("[CREATOR] Recovered latest creator request after restart.");
-      }
-    } catch {}
+  // Creator tasks are recovered only from the explicit active-task KV.
+  // Completed creator turns must never be replayed just because they were recent.
+  // This prevents restart loops where the same historical command is executed forever.
+  if (db.getKV("creator_task_active")) {
+    db.deleteKV("sleep_until");
+    logger.info("[CREATOR] Preserved explicit in-flight creator task across restart.");
+  }
+
+  // Clear the legacy persistence-check task that was used only to validate the
+  // Railway volume. It is not an application task and should never keep RITTY busy.
+  const legacyCreatorTask = db.getKV("creator_task_active") || "";
+  if (
+    /teste-persistencia|RITTY PERSISTENTE OK|teste de persist[eê]ncia/i.test(legacyCreatorTask) &&
+    !db.raw.prepare("SELECT 1 FROM inbox_messages WHERE status = 'received' AND from_address = 'dashboard://creator' LIMIT 1").get()
+  ) {
+    db.deleteKV("creator_task_active");
+    db.deleteKV("creator_task_progress");
+    logger.info("[CREATOR] Cleared legacy persistence-test task from active queue.");
   }
 
   // Set start time
@@ -1299,30 +1303,14 @@ export async function runAgentLoop(
         (!response.toolCalls || response.toolCalls.length === 0) &&
         response.finishReason === "stop"
       ) {
-        // A text-only response closes a creator task; tool-only turns retain
-        // the task so the next loop iteration continues from saved history.
+        // A text-only creator response is a valid completion. Read-only requests,
+        // diagnostics, confirmations, and other harmless commands must not loop forever.
+        // Tool-only turns still keep creator_task_active so multi-step implementation work
+        // can continue on the next inference cycle.
         if (currentInput?.source === "creator") {
-          const creatorProgress = db.getKV("creator_task_progress") === "1";
-          if (creatorProgress) {
-            db.deleteKV("creator_task_active");
-            db.deleteKV("creator_task_progress");
-            log(config, "[CREATOR] Task returned final text after concrete implementation progress.");
-          } else {
-            // Do not let the model terminate an untouched creator task with prose.
-            // Requeue the active task immediately for another implementation turn.
-            const activeCreator = db.getKV("creator_task_active") || currentInput.content;
-            db.setKV("creator_task_active", activeCreator);
-            pendingInput = {
-              content:
-                "CONTINUE THE CREATOR TASK NOW. The previous turn produced no concrete tool action. " +
-                "Do not answer with a plan or status. Use read_file/exec/edit_own_file/git tools to make an actual change. " +
-                "Do not finish until you have made and verified a concrete implementation change.\n" +
-                activeCreator,
-              source: "creator",
-            };
-            db.deleteKV("sleep_until");
-            log(config, "[CREATOR] Text-only response rejected; continuing task until concrete work is performed.");
-          }
+          db.deleteKV("creator_task_active");
+          db.deleteKV("creator_task_progress");
+          log(config, "[CREATOR] Task completed with final text response.");
         }
         // Agent produced text without tool calls.
         // This is a natural pause point -- no work queued, sleep briefly.
