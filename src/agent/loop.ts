@@ -478,19 +478,20 @@ export async function runAgentLoop(
   log(config, `[WAKE UP] ${config.name} is alive. Credits: ${(financial.creditsCents / 100).toFixed(2)}`);
 
   // One-time non-financial smoke test of the real sovereign execution path.
-  // It verifies filesystem writes + Node execution without touching goals,
-  // wallets, transfers, or any external financial system.
+  // Verify file creation and shell execution without assuming Node/Python exist
+  // in the remote command container. No goals or financial systems are touched.
   if (db.getKV("ritty_execution_smoke_v1") !== "passed") {
     try {
       const smoke = await conway.exec(
         "mkdir -p /root/workspace/ritty-smoke && " +
-        "printf '%s\n' \"console.log('RITTY_EXECUTION_OK')\" > /root/workspace/ritty-smoke/test.js && " +
-        "node /root/workspace/ritty-smoke/test.js",
+        "printf '%s' 'RITTY_EXECUTION_OK' > /root/workspace/ritty-smoke/result.txt && " +
+        "test \"$(cat /root/workspace/ritty-smoke/result.txt)\" = 'RITTY_EXECUTION_OK' && " +
+        "echo RITTY_EXECUTION_OK",
         30_000,
       );
       if (smoke.exitCode === 0 && smoke.stdout.includes("RITTY_EXECUTION_OK")) {
         db.setKV("ritty_execution_smoke_v1", "passed");
-        logger.info("[SMOKE TEST] Execution path PASS: write_file + exec + node completed successfully.");
+        logger.info("[SMOKE TEST] Execution path PASS: file write + shell command + result verification completed.");
       } else {
         logger.warn(
           "[SMOKE TEST] Execution path FAIL: " +
