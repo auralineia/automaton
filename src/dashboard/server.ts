@@ -251,8 +251,16 @@ function buildSnapshot(db: AutomatonDatabase, config: AutomatonConfig) {
     })).reverse(),
     chatPending: (() => {
       const row = db.raw.prepare("SELECT id,content,status,received_at,retry_count,max_retries FROM inbox_messages WHERE from_address = ? ORDER BY received_at DESC LIMIT 1").get("dashboard://creator") as any;
-      if (!row) return null;
-      return { id: String(row.id), content: String(row.content ?? ""), status: String(row.status ?? "received"), receivedAt: String(row.received_at ?? ""), retryCount: Number(row.retry_count ?? 0), maxRetries: Number(row.max_retries ?? 3) };
+      const active = db.getKV("creator_task_active");
+      if (!row && !active) return null;
+      return {
+        id: String(row?.id ?? "active-creator-task"),
+        content: String(row?.content ?? active ?? ""),
+        status: active && (!row || row.status === "processed") ? "in_progress" : String(row?.status ?? "received"),
+        receivedAt: String(row?.received_at ?? ""),
+        retryCount: Number(row?.retry_count ?? 0),
+        maxRetries: Number(row?.max_retries ?? 3),
+      };
     })(),
   };
 }
