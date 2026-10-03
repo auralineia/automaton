@@ -351,6 +351,20 @@ export async function runAgentLoop(
     }
   }
 
+  // Recover creator/inbox messages that were left in_progress by a previous
+  // container/process restart. This runtime uses a single SQLite DB, so at the
+  // start of a fresh loop there cannot be another claimant still executing.
+  // Keeping these rows in_progress would make the dashboard show "processing"
+  // forever and the message would never be picked up again.
+  const recoveredInbox = db.raw.prepare(
+    `UPDATE inbox_messages
+     SET status = CASE WHEN retry_count < max_retries THEN 'received' ELSE 'failed' END
+     WHERE status = 'in_progress'`,
+  ).run();
+  if (recoveredInbox.changes > 0) {
+    logger.warn(`[INBOX] Recovered ${recoveredInbox.changes} message(s) left in_progress by a previous runtime instance.`);
+  }
+
   // Set start time
   if (!db.getKV("start_time")) {
     db.setKV("start_time", new Date().toISOString());
@@ -440,7 +454,13 @@ export async function runAgentLoop(
               return `[Message from ${from.content}]: ${content.content}`;
             })
             .join("\n\n");
-          pendingInput = { content: formatted, source: "agent" };
+          const hasCreatorMessage = claimedMessages.some(
+            (m) => m.fromAddress === "dashboard://creator",
+          );
+          pendingInput = {
+            content: formatted,
+            source: hasCreatorMessage ? "creator" : "agent",
+          };
         } else if (wakeupPending) {
           pendingInput = { content: wakeupInput, source: "wakeup" };
           wakeupPending = false;
