@@ -121,7 +121,7 @@ const DEFAULT_PROVIDERS: ProviderConfig[] = [
     apiKeyEnvVar: "GROQ_API_KEY",
     models: [
       {
-        id: "openai/gpt-oss-120b",
+        id: "openai/gpt-oss-20b",
         tier: "reasoning",
         contextWindow: 131072,
         maxOutputTokens: 65536,
