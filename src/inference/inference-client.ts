@@ -109,7 +109,7 @@ export class UnifiedInferenceClient {
       return;
     }
 
-    const minIntervalMs = Number(process.env.RITTY_GROQ_MIN_INTERVAL_MS || 61000);
+    const minIntervalMs = Number(process.env.RITTY_GROQ_MIN_INTERVAL_MS || 25000);
     if (!Number.isFinite(minIntervalMs) || minIntervalMs <= 0) {
       return;
     }
