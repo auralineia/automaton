@@ -194,11 +194,15 @@ export class Orchestrator {
 
   async matchTaskToAgent(task: TaskNode): Promise<AgentAssignment> {
     const requestedRole = task.agentRole?.trim() || "generalist";
-    const selfDirected = isSelfDirectedTask(task);
+    const goal = getGoalById(this.params.db, task.goalId);
+    const selfDirected =
+      isSelfDirectedTask(task) ||
+      (goal ? isSelfDirectedValueGoal(goal) : false);
+    const sovereign = process.env.RITTY_MODE === "sovereign" || this.params.config?.sovereignMode === true;
 
     // In sovereign mode, self-directed work must use the in-process worker pool.
-    // Do not let a stale remote child record win the assignment.
-    if (selfDirected && process.env.RITTY_MODE === "sovereign") {
+    // Do not let a stale remote child record or the parent process win.
+    if (selfDirected && sovereign) {
       const spawned = await this.trySpawnAgent(task);
       if (spawned) {
         return spawned;
