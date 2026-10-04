@@ -494,6 +494,50 @@ export async function runAgentLoop(
     );
   }
 
+  // Recover stale self-assigned autonomous-cycle work after a parent restart.
+  // Parent-owned assignments have no independent worker heartbeat, so stale work
+  // must be requeued instead of keeping the autonomous cycle trapped forever.
+  try {
+    const nowMs = Date.now();
+    const stale = db.raw.prepare(
+      `SELECT t.id, t.goal_id, t.started_at, t.created_at, t.timeout_ms
+       FROM task_graph t
+       JOIN goals g ON g.id = t.goal_id
+       WHERE g.status = 'active'
+         AND lower(COALESCE(g.title, '')) LIKE 'autonomous value-creation cycle%'
+         AND t.assigned_to = ?
+         AND t.status IN ('assigned', 'running')`,
+    ).all(identity.address) as Array<{
+      id: string;
+      goal_id: string;
+      started_at: string | null;
+      created_at: string;
+      timeout_ms: number;
+    }>;
+
+    for (const task of stale) {
+      const started = new Date(task.started_at ?? task.created_at).getTime();
+      const timeoutMs = Math.max(60_000, Number(task.timeout_ms) || 300_000);
+      if (Number.isFinite(started) && nowMs - started >= timeoutMs) {
+        db.raw.prepare(
+          `UPDATE task_graph
+           SET status = 'pending', assigned_to = NULL, started_at = NULL,
+               description = replace(description, '/root/workspace', '/root/.automaton/workspace/' || goal_id)
+           WHERE id = ? AND status IN ('assigned', 'running')`,
+        ).run(task.id);
+        db.raw.prepare("DELETE FROM kv WHERE key = ?").run(`orchestrator.task_lease.${task.id}`);
+        logger.info("[ORCHESTRATION] Requeued stale self-assigned autonomous task.", {
+          taskId: task.id,
+          goalId: task.goal_id,
+        });
+      }
+    }
+  } catch (error) {
+    logger.warn(
+      `[ORCHESTRATION] Stale autonomous task recovery skipped: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
   // Also clear the legacy test task itself. The old task can carry the test marker
   // only in its task description rather than in the parent goal title.
   try {
@@ -1206,6 +1250,25 @@ export async function runAgentLoop(
             } satisfies ToolCallResult;
             turn.toolCalls.push(result);
             log(config, "[TOOL] blocked retired persistence smoke test");
+            callCount++;
+            continue;
+          }
+
+          if (
+            currentInput?.source !== "creator" &&
+            getActiveGoals(db.raw).length > 0 &&
+            isIdleOnlyTool(tc.function.name)
+          ) {
+            const result = {
+              id: tc.id,
+              name: tc.function.name,
+              arguments: args,
+              result: "Status-only tool suppressed while an autonomous goal is active. Continue useful work through the orchestrator.",
+              durationMs: 0,
+              error: "autonomous_status_tool_suppressed",
+            } satisfies ToolCallResult;
+            turn.toolCalls.push(result);
+            log(config, `[TOOL] suppressed autonomous status call: ${tc.function.name}`);
             callCount++;
             continue;
           }
