@@ -257,16 +257,15 @@ async function run(): Promise<void> {
     config.inferenceModel =
       requestedSovereignModel && allowedSovereignModels.has(requestedSovereignModel)
         ? requestedSovereignModel
-        : "openai/gpt-oss-120b";
+        : "openai/gpt-oss-20b";
 
-    // Normalize every persisted strategy field so stale 20B/Conway models
-    // cannot be revived by the inference router.
+    // Normalize persisted strategy fields to the supported sovereign model.
     config.modelStrategy = {
       ...DEFAULT_MODEL_STRATEGY_CONFIG,
       ...(config.modelStrategy ?? {}),
-      inferenceModel: "openai/gpt-oss-120b",
-      lowComputeModel: "openai/gpt-oss-120b",
-      criticalModel: "openai/gpt-oss-120b",
+      inferenceModel: "openai/gpt-oss-20b",
+      lowComputeModel: "openai/gpt-oss-20b",
+      criticalModel: "openai/gpt-oss-20b",
     };
 
     saveConfig(config);
