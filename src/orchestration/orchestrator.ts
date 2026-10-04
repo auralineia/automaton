@@ -341,6 +341,16 @@ export class Orchestrator {
       };
     }
 
+    // Self-directed value cycles are a fixed, bounded single-worker mission.
+    // Skip an extra classifier inference and create the concrete task directly.
+    if (isSelfDirectedValueGoal(goal)) {
+      decomposeGoal(this.params.db, goal.id, [createSelfDirectedTask(goal)]);
+      return {
+        ...state,
+        phase: "executing",
+      };
+    }
+
     const complexity = await this.classifyComplexity(goal);
     if (complexity.requiresPlanMode) {
       return {
@@ -384,6 +394,19 @@ export class Orchestrator {
         ...state,
         phase: "idle",
         goalId: null,
+      };
+    }
+
+    // Recover a self-directed cycle that was persisted in "planning" during
+    // a restart without spending another planner inference call.
+    if (isSelfDirectedValueGoal(goal)) {
+      const existingTasks = getTasksByGoal(this.params.db, goal.id);
+      if (existingTasks.length === 0) {
+        decomposeGoal(this.params.db, goal.id, [createSelfDirectedTask(goal)]);
+      }
+      return {
+        ...state,
+        phase: "executing",
       };
     }
 
@@ -1180,6 +1203,38 @@ function parseTaskResultMessage(message: AgentMessage): TaskResultEnvelope | nul
     goalId: message.goalId,
     result,
     error: success ? undefined : (firstString(obj.error, output) ?? undefined),
+  };
+}
+
+function isSelfDirectedValueGoal(goal: GoalRow): boolean {
+  const title = goal.title.trim().toLowerCase();
+  const strategy = String(goal.strategy ?? "").trim().toLowerCase();
+  return title.startsWith("autonomous value-creation cycle") ||
+    strategy.includes("self-directed operation");
+}
+
+function createSelfDirectedTask(goal: GoalRow) {
+  return {
+    parentId: null,
+    goalId: goal.id,
+    title: goal.title,
+    description:
+      "Execute one concrete, legitimate value-creation cycle. " +
+      "Inspect prior cycle outputs first so you do not repeat the same idea. " +
+      "Research real customer/business needs using public web information when useful, " +
+      "select one low-cost opportunity, and create one useful digital deliverable now. " +
+      "Store the deliverable under /root/.automaton/workspace/" + goal.id + "/outputs/. " +
+      "Also create cycle-report.md describing the problem, target customer, evidence, what was built, " +
+      "validation performed, assumptions, and the next safe revenue step. Validate the result before finishing. " +
+      "Do not send spam or unsolicited outreach. Do not make transfers, trades, wallet operations, " +
+      "crypto transactions, currency conversion, payments, purchases, paid deployments, or binding commitments. " +
+      "Prefer a different opportunity from recent cycles and produce an actual artifact rather than status checks.",
+    status: "pending" as const,
+    assignedTo: null,
+    agentRole: "researcher",
+    priority: 80,
+    dependencies: [],
+    result: null,
   };
 }
 
