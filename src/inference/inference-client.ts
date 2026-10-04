@@ -224,12 +224,24 @@ export class UnifiedInferenceClient {
         );
         return { result, retries };
       } catch (error) {
+        // Network timeouts/aborts should fail over to another provider instead
+        // of burning several more long retries on the same endpoint.
+        const failoverOnly = this.isFailoverOnlyError(error);
         const retryable = this.isRetryableError(error);
         if (!retryable) {
           throw new ProviderAttemptError({
             providerId: resolved.provider.id,
             retries,
             retryable: false,
+            originalError: error,
+          });
+        }
+
+        if (failoverOnly) {
+          throw new ProviderAttemptError({
+            providerId: resolved.provider.id,
+            retries,
+            retryable: true,
             originalError: error,
           });
         }
@@ -444,7 +456,21 @@ export class UnifiedInferenceClient {
 
   private isRetryableError(error: unknown): boolean {
     const status = getStatusCode(error);
-    return status !== undefined && RETRYABLE_STATUS_CODES.has(status);
+    if (status !== undefined && RETRYABLE_STATUS_CODES.has(status)) {
+      return true;
+    }
+    return this.isFailoverOnlyError(error);
+  }
+
+  private isFailoverOnlyError(error: unknown): boolean {
+    if (!error) return false;
+    const name = typeof error === "object" && error !== null && "name" in error
+      ? String((error as { name?: unknown }).name ?? "")
+      : "";
+    const message = error instanceof Error ? error.message : String(error);
+    return /abort|timeout|timed out|ETIMEDOUT|ECONNRESET|ECONNABORTED|socket hang up|fetch failed/i.test(
+      name + " " + message,
+    );
   }
 
   private isProviderCircuitOpen(providerId: string): boolean {
