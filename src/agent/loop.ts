@@ -241,12 +241,11 @@ export async function runAgentLoop(
         },
         config: {
           ...config,
-          sovereignMode: process.env.RITTY_MODE === "sovereign",
           spawnAgent: async (task: any) => {
             // Sovereign mode runs workers locally in-process. Avoid spawning
             // remote Conway children that can remain marked alive after the
             // actual worker is gone.
-            if (process.env.RITTY_MODE === "sovereign" || config.sovereignMode === true) {
+            if (process.env.RITTY_MODE === "sovereign") {
               try {
                 const spawned = initializedWorkerPool.spawn(task);
                 logger.info("[ORCHESTRATION] Spawned local sovereign worker", {
