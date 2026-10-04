@@ -132,7 +132,7 @@ const DEFAULT_PROVIDERS: ProviderConfig[] = [
         supportsStreaming: true,
       },
       {
-        id: "openai/gpt-oss-120b",
+        id: "openai/gpt-oss-20b",
         tier: "fast",
         contextWindow: 131072,
         maxOutputTokens: 65536,
@@ -436,6 +436,7 @@ export class ProviderRegistry {
       apiKey,
       baseURL: provider.baseUrl,
       timeout: timeoutMs,
+      maxRetries: 0,
     });
 
     return {
