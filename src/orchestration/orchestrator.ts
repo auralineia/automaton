@@ -194,6 +194,16 @@ export class Orchestrator {
 
   async matchTaskToAgent(task: TaskNode): Promise<AgentAssignment> {
     const requestedRole = task.agentRole?.trim() || "generalist";
+    const selfDirected = isSelfDirectedTask(task);
+
+    // In sovereign mode, self-directed work must use the in-process worker pool.
+    // Do not let a stale remote child record win the assignment.
+    if (selfDirected && process.env.RITTY_MODE === "sovereign") {
+      const spawned = await this.trySpawnAgent(task);
+      if (spawned) {
+        return spawned;
+      }
+    }
 
     const idleAgents = this.params.agentTracker.getIdle();
     const directRoleMatch = idleAgents.find((agent) => agent.role === requestedRole);
@@ -1204,6 +1214,10 @@ function parseTaskResultMessage(message: AgentMessage): TaskResultEnvelope | nul
     result,
     error: success ? undefined : (firstString(obj.error, output) ?? undefined),
   };
+}
+
+function isSelfDirectedTask(task: TaskNode): boolean {
+  return task.title.trim().toLowerCase().startsWith("autonomous value-creation cycle");
 }
 
 function isSelfDirectedValueGoal(goal: GoalRow): boolean {
