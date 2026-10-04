@@ -320,7 +320,7 @@ export class ProviderRegistry {
     const results: ResolvedModel[] = [];
 
     for (const provider of orderedProviders) {
-      if (!this.isProviderActive(provider)) {
+      if (!this.isProviderActive(provider) || !this.hasConfiguredApiKey(provider)) {
         continue;
       }
 
@@ -338,7 +338,7 @@ export class ProviderRegistry {
 
     if (effectiveTier !== tier) {
       for (const provider of this.getProviderOrderForTier(tier)) {
-        if (!this.isProviderActive(provider)) {
+        if (!this.isProviderActive(provider) || !this.hasConfiguredApiKey(provider)) {
           continue;
         }
 
@@ -474,6 +474,12 @@ export class ProviderRegistry {
     }
 
     return false;
+  }
+
+  private hasConfiguredApiKey(provider: ProviderConfig): boolean {
+    if (provider.id === "local") return true;
+    const value = process.env[provider.apiKeyEnvVar];
+    return typeof value === "string" && value.length > 0;
   }
 
   private applySurvivalTier(tier: ModelTier, survivalMode: boolean): ModelTier {
