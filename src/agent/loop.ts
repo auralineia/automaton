@@ -525,6 +525,34 @@ export async function runAgentLoop(
     );
   }
 
+
+  // Emergency durable-state cleanup for the known persistence smoke-test task that
+  // was left self-assigned across earlier deployments. The identifiers are from the
+  // runtime's own persisted orchestration snapshot; this migration is one-time and
+  // only closes that exact legacy test task/goal.
+  try {
+    const now = new Date().toISOString();
+    const staleTaskId = "01M40CZ100VKTNJVC9APYQNNVT";
+    const staleGoalId = "01M40CSBW3RYS9ZCV5F5YW2KEJ";
+    const taskChanged = db.raw.prepare(
+      "UPDATE task_graph SET status = 'completed', assigned_to = NULL, completed_at = COALESCE(completed_at, ?) WHERE id = ? AND status IN ('pending', 'assigned', 'running')"
+    ).run(now, staleTaskId);
+    const goalChanged = db.raw.prepare(
+      "UPDATE goals SET status = 'completed', completed_at = COALESCE(completed_at, ?) WHERE id = ? AND status = 'active'"
+    ).run(now, staleGoalId);
+    if (taskChanged.changes > 0 || goalChanged.changes > 0) {
+      db.raw.prepare("DELETE FROM kv WHERE key = ?").run("orchestrator.task_lease." + staleTaskId);
+      logger.info("[ORCHESTRATION] Closed known stale persistence-test task/goal.", {
+        taskChanged: taskChanged.changes,
+        goalChanged: goalChanged.changes,
+      });
+    }
+  } catch (error) {
+    logger.warn(
+      `[ORCHESTRATION] Known stale-task migration skipped: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
   // Set start time
   if (!db.getKV("start_time")) {
     db.setKV("start_time", new Date().toISOString());
