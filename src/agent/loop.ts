@@ -782,7 +782,22 @@ export async function runAgentLoop(
       const allTurns = db.getRecentTurns(20);
       const meaningfulTurns = allTurns.filter((t) => {
         if (t.toolCalls.length === 0) return true; // text-only turns are meaningful
-        return t.toolCalls.some((tc) => !isIdleOnlyTool(getObservedToolName(tc)));
+        return t.toolCalls.some((tc) => {
+          const name = getObservedToolName(tc);
+          const serialized = JSON.stringify({
+            arguments: tc.arguments ?? {},
+            result: tc.result ?? "",
+          });
+          // The persistence smoke test is retired. Do not feed its historical
+          // read/exec turns back into the model as "meaningful" context.
+          if (
+            /^(read_file|exec)$/.test(name) &&
+            /teste-persistencia\\.txt|RITTY PERSISTENTE OK/i.test(serialized)
+          ) {
+            return false;
+          }
+          return !isIdleOnlyTool(name);
+        });
       });
       // Keep at least the last 2 turns for continuity, even if idle
       const recentTurns = trimContext(
@@ -1137,6 +1152,28 @@ export async function runAgentLoop(
           }
 
           log(config, `[TOOL] ${tc.function.name}(${JSON.stringify(args).slice(0, 100)})`);
+
+          // Hard-stop the retired persistence smoke test so the model cannot
+          // resurrect it even if old context or memory suggests the path.
+          if (
+            /^(read_file|exec)$/.test(tc.function.name) &&
+            /teste-persistencia\\.txt|RITTY PERSISTENTE OK/i.test(
+              JSON.stringify(args),
+            )
+          ) {
+            const result = {
+              id: tc.id,
+              name: tc.function.name,
+              arguments: args,
+              result: "Persistence smoke test retired. Do not access /root/.automaton/teste-persistencia.txt. Choose another useful task.",
+              durationMs: 0,
+              error: "legacy_persistence_test_retired",
+            } satisfies ToolCallResult;
+            turn.toolCalls.push(result);
+            log(config, "[TOOL] blocked retired persistence smoke test");
+            callCount++;
+            continue;
+          }
 
           const result = await executeTool(
             tc.function.name,
