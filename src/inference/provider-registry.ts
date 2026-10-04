@@ -431,9 +431,11 @@ export class ProviderRegistry {
 
   private buildResolvedModel(provider: ProviderConfig, model: ModelConfig): ResolvedModel {
     const apiKey = this.resolveApiKey(provider);
+    const timeoutMs = Math.max(10_000, Number(process.env.RITTY_INFERENCE_TIMEOUT_MS || 30_000));
     const client = new OpenAI({
       apiKey,
       baseURL: provider.baseUrl,
+      timeout: timeoutMs,
     });
 
     return {
