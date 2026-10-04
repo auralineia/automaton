@@ -185,66 +185,14 @@ export function createInferenceClient(
       // Groq remains primary. When sovereign Groq fails (including quota/rate
       // limits), fail over immediately through a small Gemini model chain.
       // We deliberately do not retry the quota-limited Groq request here.
-      if (backend === "groq" && geminiApiKey) {
-        const groqErrorMessage =
-          error instanceof Error ? error.message : String(error);
+      // Sovereign mode must fail fast on Groq errors instead of falling through to
+      // an unrelated provider with its own quota. A Gemini fallback caused long
+      // retries, 429 cascades, and stalled autonomous workers in production.
+      if (backend === "groq" && process.env.RITTY_MODE === "sovereign") {
+        const message = error instanceof Error ? error.message : String(error);
         logger.warn(
-          `[SOVEREIGN] Groq inference failed; starting Gemini fallback: ${groqErrorMessage.slice(0, 500)}`,
+          `[SOVEREIGN] Groq inference failed; no secondary provider fallback: ${message.slice(0, 500)}`,
         );
-        // Ignore stale/deprecated RITTY_GEMINI_MODEL values. Google currently
-        // exposes Gemini 3.8/3.7/3.6/3.5 Flash for the API.
-        const supportedGeminiModels = [
-          "gemini-3.8-flash",
-          "gemini-3.7-flash",
-          "gemini-3.6-flash",
-          "gemini-3.5-flash",
-        ];
-        const configuredGemini = process.env.RITTY_GEMINI_MODEL;
-        const geminiCandidates = Array.from(new Set([
-          ...(configuredGemini && supportedGeminiModels.includes(configuredGemini)
-            ? [configuredGemini]
-            : []),
-          ...supportedGeminiModels,
-        ]));
-
-        let lastGeminiError: unknown = undefined;
-        for (const geminiModel of geminiCandidates) {
-          const geminiBody: Record<string, unknown> = {
-            ...body,
-            model: geminiModel,
-          };
-
-          if ("max_completion_tokens" in geminiBody) {
-            geminiBody.max_tokens = geminiBody.max_completion_tokens;
-            delete geminiBody.max_completion_tokens;
-          }
-
-          try {
-            const response = await chatViaOpenAiCompatible({
-              model: geminiModel,
-              body: geminiBody,
-              apiUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
-              apiKey: geminiApiKey,
-              backend: "gemini",
-              httpClient,
-              retries: 0,
-              timeoutMs: 15_000,
-            });
-            logger.info(
-              `[SOVEREIGN] Gemini fallback succeeded with ${geminiModel}`,
-            );
-            return response;
-          } catch (geminiError) {
-            lastGeminiError = geminiError;
-            const message =
-              geminiError instanceof Error ? geminiError.message : String(geminiError);
-            logger.warn(
-              `[SOVEREIGN] Gemini candidate ${geminiModel} failed: ${message.slice(0, 400)}`,
-            );
-          }
-        }
-
-        throw lastGeminiError || lastGroqError;
       }
 
       throw lastGroqError;
