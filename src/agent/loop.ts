@@ -501,7 +501,17 @@ export async function runAgentLoop(
     db.raw.prepare(
       `UPDATE task_graph
        SET agent_role = 'researcher',
-           description = replace(description, '/root/workspace', '/root/.automaton/workspace/' || goal_id)
+           priority = 80,
+           description =
+             'Execute one concrete, legitimate value-creation cycle. ' ||
+             'Inspect prior cycle outputs first so you do not repeat the same idea. ' ||
+             'Research real customer/business needs using public web information when useful, ' ||
+             'select one low-cost opportunity, create one useful digital deliverable now, ' ||
+             'and validate it before finishing. Store all durable outputs under /root/.automaton/workspace/' || goal_id || '/outputs/. ' ||
+             'Also create cycle-report.md with the problem, target customer, evidence, what was built, validation, assumptions, ' ||
+             'and the next safe revenue step. Do not send spam or unsolicited outreach. Do not make transfers, trades, wallet operations, ' ||
+             'crypto transactions, currency conversion, payments, purchases, paid deployments, or binding commitments.',
+           title = title
        WHERE goal_id IN (
          SELECT id FROM goals
          WHERE lower(COALESCE(title, '')) LIKE 'autonomous value-creation cycle%'
