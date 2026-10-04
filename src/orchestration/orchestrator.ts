@@ -198,7 +198,7 @@ export class Orchestrator {
     const selfDirected =
       isSelfDirectedTask(task) ||
       (goal ? isSelfDirectedValueGoal(goal) : false);
-    const sovereign = process.env.RITTY_MODE === "sovereign" || this.params.config?.sovereignMode === true;
+    const sovereign = process.env.RITTY_MODE === "sovereign";
 
     // In sovereign mode, self-directed work must use the in-process worker pool.
     // Do not let a stale remote child record or the parent process win.
