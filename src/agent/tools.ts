@@ -3473,6 +3473,23 @@ export async function executeTool(
       };
     }
 
+    // Validate required fields before dispatching to a concrete tool.
+    // Models can occasionally return an empty arguments object for tools such
+    // as write_file; reject it safely instead of passing undefined to path logic.
+    if (targetName === "write_file") {
+      if (typeof targetArgs.path !== "string" || targetArgs.path.trim().length === 0 ||
+          typeof targetArgs.content !== "string") {
+        return {
+          id: ulid(),
+          name: toolName,
+          arguments: args,
+          result: "",
+          durationMs: Date.now() - startTime,
+          error: 'Invalid write_file arguments: provide string "path" and "content".',
+        };
+      }
+    }
+
     // Creator turns are never allowed to spend a turn on maintenance/status
     // checks or background-goal orchestration. Hard-block these targets here,
     // not only in the prompt, so the model must choose a concrete action.
