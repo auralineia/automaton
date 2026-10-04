@@ -233,6 +233,12 @@ export class Orchestrator {
       return spawned;
     }
 
+    // A self-directed sovereign task must never fall back to the parent.
+    // Keep it pending so the next tick can retry the local worker pool.
+    if (selfDirected && sovereign) {
+      throw new Error(`No available agent for task ${task.id}`);
+    }
+
     // Fallback: assign to the parent agent itself (self-execution mode).
     // This handles local dev environments where spawning child sandboxes
     // is not available, and ensures goals still make progress.
