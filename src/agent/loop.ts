@@ -494,6 +494,26 @@ export async function runAgentLoop(
     );
   }
 
+  // Normalize existing autonomous-cycle tasks created by earlier builds.
+  // This prevents an old generalist assignment or non-durable output path from
+  // steering the current autonomous worker away from the hardened workflow.
+  try {
+    db.raw.prepare(
+      `UPDATE task_graph
+       SET agent_role = 'researcher',
+           description = replace(description, '/root/workspace', '/root/.automaton/workspace/' || goal_id)
+       WHERE goal_id IN (
+         SELECT id FROM goals
+         WHERE lower(COALESCE(title, '')) LIKE 'autonomous value-creation cycle%'
+       )
+         AND status IN ('pending', 'assigned', 'running')`,
+    ).run();
+  } catch (error) {
+    logger.warn(
+      `[ORCHESTRATION] Autonomous task normalization skipped: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
   // Recover stale self-assigned autonomous-cycle work after a parent restart.
   // Parent-owned assignments have no independent worker heartbeat, so stale work
   // must be requeued instead of keeping the autonomous cycle trapped forever.
