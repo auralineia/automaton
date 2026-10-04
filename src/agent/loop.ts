@@ -637,6 +637,27 @@ export async function runAgentLoop(
     db,
   });
 
+  // Sovereign recovery: never reuse a remote child assignment created by an older
+  // runtime. RITTY has an in-process worker pool in sovereign mode, so any
+  // non-local task must be returned to pending and re-run locally.
+  if (process.env.RITTY_MODE === "sovereign") {
+    try {
+      const migrated = db.raw.prepare(
+        "UPDATE task_graph SET status = 'pending', assigned_to = NULL, started_at = NULL " +
+        "WHERE status IN ('assigned', 'running') AND assigned_to IS NOT NULL AND assigned_to NOT LIKE 'local://%'",
+      ).run();
+      if (migrated.changes > 0) {
+        logger.warn("[ORCHESTRATION] Requeued stale remote assignments for sovereign local execution.", {
+          tasks: migrated.changes,
+        });
+      }
+    } catch (error) {
+      logger.warn(
+        `[ORCHESTRATION] Sovereign task migration skipped: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   // Transition to running
   db.setAgentState("running");
   onStateChange?.("running");
@@ -1170,7 +1191,7 @@ export async function runAgentLoop(
         currentInput?.source === "creator"
           ? tools.filter((tool) => creatorToolSet.has(tool.name) && !CREATOR_BLOCKED_TOOLS.has(tool.name))
           : activeGoalExists
-            ? tools.filter((tool) => tool.name !== "create_goal")
+            ? tools.filter((tool) => !isIdleOnlyTool(tool.name) && tool.name !== "create_goal")
             : tools;
       const inferenceTools = toolsToInferenceFormat(inferenceToolSource);
       const routerResult = await inferenceRouter.route(
