@@ -44,6 +44,7 @@ import {
   resetInboxToReceived,
   consumeNextWakeEvent,
   getActiveGoals,
+  insertGoal,
 } from "../state/database.js";
 import type { InboxMessageRow } from "../state/database.js";
 import { ulid } from "ulid";
@@ -705,6 +706,40 @@ export async function runAgentLoop(
         } else if (wakeupPending) {
           pendingInput = { content: wakeupInput, source: "wakeup" };
           wakeupPending = false;
+        }
+      }
+
+      // Self-starting autonomy: when there is no creator command and no active
+      // goal, seed exactly one safe value-creation goal so the orchestrator has
+      // concrete work to plan and delegate. This is intentionally non-transactional:
+      // anything involving transfers, payments, purchases, wallets, or contracts
+      // still requires explicit creator approval through the tool policy.
+      if (
+        pendingInput?.source !== "creator" &&
+        !db.getKV("creator_task_active") &&
+        db.raw.prepare("SELECT 1 FROM inbox_messages WHERE status = 'received' AND from_address = 'dashboard://creator' LIMIT 1").get() == null &&
+        getActiveGoals(db.raw).length === 0
+      ) {
+        try {
+          const goalId = insertGoal(db.raw, {
+            title: "Autonomous value-creation cycle",
+            description:
+              "Continuously identify one legitimate, low-cost opportunity to create verifiable value. " +
+              "Research a real need or market opportunity using available tools, choose a concrete non-transactional task, " +
+              "produce a useful digital deliverable or improvement in /root/workspace, validate the result, and record what " +
+              "was achieved and what the next safe step should be. Do not send sales messages or external outreach without creator approval. " +
+              "Do not initiate transfers, trades, wallet actions, crypto transactions, currency conversion, payments, purchases, " +
+              "paid deployments, or binding contracts. Prefer work that can later be offered for voluntary payment after approval.",
+            strategy:
+              "Self-directed operation: research -> select opportunity -> create/implement -> validate -> document -> repeat. " +
+              "Prioritize concrete output over status checks and never wait merely because the creator is silent.",
+            expectedRevenueCents: 0,
+          });
+          logger.info("[AUTONOMY] Seeded self-directed value-creation goal.", { goalId });
+        } catch (error) {
+          logger.warn(
+            `[AUTONOMY] Self-directed goal seed skipped: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       }
 
