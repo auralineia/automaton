@@ -1117,6 +1117,33 @@ export async function runAgentLoop(
             `[ORCHESTRATOR] phase=${orchestratorTick.phase} assigned=${orchestratorTick.tasksAssigned} completed=${orchestratorTick.tasksCompleted} failed=${orchestratorTick.tasksFailed}`,
           );
         }
+
+        // Once autonomous work has been delegated to a local worker, the parent
+        // must yield the inference slot. This prevents the supervisor from
+        // competing with the worker for Groq/OpenAI quota and burning credits.
+        // The durable task remains assigned and will be recovered/requeued on
+        // the next wake if its worker actually dies or times out.
+        if (pendingInput?.source !== "creator") {
+          const delegatedAutonomousWork = db.raw.prepare(
+            `SELECT 1
+             FROM task_graph t
+             JOIN goals g ON g.id = t.goal_id
+             WHERE g.status = 'active'
+               AND lower(COALESCE(g.title, '')) LIKE 'autonomous value-creation cycle%'
+               AND t.assigned_to LIKE 'local://%'
+               AND t.status IN ('assigned', 'running')
+             LIMIT 1`,
+          ).get();
+
+          if (delegatedAutonomousWork) {
+            log(config, "[ORCHESTRATOR] Autonomous worker active; parent yielding inference slot.");
+            db.setKV("sleep_until", new Date(Date.now() + 60_000).toISOString());
+            db.setAgentState("sleeping");
+            onStateChange?.("sleeping");
+            running = false;
+            break;
+          }
+        }
       }
 
       if (planModeController) {
