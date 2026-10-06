@@ -58,6 +58,8 @@ export abstract class BaseHarness implements AgentHarness {
       `**Task ID:** ${this.task.id}`,
       `**Goal ID:** ${this.task.goalId}`,
       `**Workspace:** ${this.context.workspaceRoot}`,
+      `**Execution root:** ${this.context.allowedEditRoot}`,
+
 
     ];
 
