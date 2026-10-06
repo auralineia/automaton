@@ -1525,7 +1525,11 @@ export async function runAgentLoop(
                 return new Set(["work_create", "work_execute"]).has(tool.name);
               }
               if (!creatorBundleAttempted) {
-                return new Set(["work_execute", "work_status", "work_resume", "read_file"]).has(tool.name);
+                // Once the exact creator work exists, force the model onto the
+                // atomic executor. Status/read turns were causing an endless
+                // "check status" loop because creator continuations deliberately
+                // do not replay autonomous conversation history.
+                return tool.name === "work_execute";
               }
               return (
                 creatorToolSet.has(tool.name) &&
@@ -1544,8 +1548,8 @@ export async function runAgentLoop(
       // responsive and must not inherit autonomous routing state.
       const directCreatorResponse = isCreatorExecution
         ? await inference.chat(messages, {
-            model: process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.5-flash-lite",
-            maxTokens: 3500,
+            model: process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.6-flash",
+            maxTokens: 7000,
             tools: inferenceTools,
           })
         : null;
