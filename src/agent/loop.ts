@@ -791,12 +791,10 @@ export async function runAgentLoop(
         (creatorWaiting || creatorTaskActive) &&
         process.env.RITTY_MODE === "sovereign" &&
         process.env.RITTY_SOVEREIGN_PRIMARY_PROVIDER !== "groq" &&
-        process.env.GEMINI_API_KEY &&
-        db.getKV("creator_provider_backoff_reset") !== "1"
+        process.env.GEMINI_API_KEY
       ) {
         db.deleteKV("inference_backoff_until");
         db.deleteKV("sleep_until");
-        db.setKV("creator_provider_backoff_reset", "1");
         log(config, "[CREATOR] Cleared stale provider backoff for explicit creator work.");
       }
 
@@ -1317,8 +1315,9 @@ export async function runAgentLoop(
             "Node.js runtime and built-in modules are available whenever possible. The sovereign sandbox home is /root. " +
             "Do NOT use /home/ritty or /home/agent. For durable work, the workspacePath returned by work_create/work_status is the ONLY source of truth: create and modify application files there. " +
             "Do not use /root/workspace as a substitute. Verify using work_test or exec inside that returned workspace. " +
-            "For substantial work use this exact workflow: work_create only if no active work exists, then work_status/work_resume, write_file or edit files, work_test, work_checkpoint/work_artifact, and work_complete. " +
-            "Once work_create succeeds, NEVER call work_create again for the same task. Do not waste turns on pwd, ls, git_status, git_diff, or environment inspection. Do not stop at a plan or explanation.",
+            "For small deterministic deliverables, prefer one work_execute call containing all required files, a real validation command, artifact paths, and a completion summary. " +
+            "For larger work, use the durable workflow: work_create only if no active work exists, then work_status/work_resume, edit files, work_test, work_checkpoint/work_artifact, and work_complete. " +
+            "Once work_create succeeds, NEVER call work_create again for the same task. Use the returned workspacePath as the source of truth. Do not waste turns on pwd, ls, git_status, git_diff, or environment inspection. Do not stop at a plan or explanation.",
         });
       }
 
@@ -1361,7 +1360,7 @@ export async function runAgentLoop(
         "git_clone",
         "git_branch",
         "review_upstream_changes",
-        "work_create", "work_start", "work_status", "work_resume",
+        "work_create", "work_execute", "work_start", "work_status", "work_resume",
         "work_checkpoint", "work_artifact", "work_test", "work_publish", "work_complete",
       ]);
 
@@ -1527,6 +1526,18 @@ export async function runAgentLoop(
         ]);
         if (turn.toolCalls.some((tc) => CREATOR_MUTATING_TOOLS.has(getObservedToolName(tc)) && !tc.error)) {
           db.setKV("creator_task_progress", "1");
+        }
+        if (turn.toolCalls.some((tc) =>
+          getObservedToolName(tc) === "work_execute" &&
+          !tc.error &&
+          /completed":\s*true/.test(tc.result || "")
+        )) {
+          db.deleteKV("creator_work_id");
+          db.deleteKV("creator_work_workspace");
+          db.deleteKV("creator_work_status_seen");
+          db.deleteKV("creator_task_active");
+          db.deleteKV("creator_task_progress");
+          log(config, "[CREATOR] Atomic work bundle completed; clearing creator execution state.");
         }
       }
       db.runTransaction(() => {
