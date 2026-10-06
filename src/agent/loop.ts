@@ -1494,18 +1494,41 @@ export async function runAgentLoop(
             ? tools.filter((tool) => !isIdleOnlyTool(tool.name) && tool.name !== "create_goal")
             : tools;
       const inferenceTools = toolsToInferenceFormat(inferenceToolSource);
-      const routerResult = await inferenceRouter.route(
-        {
-          messages: messages,
-          taskType: "agent_turn",
-          tier: survivalTier,
-          maxTokens: isCreatorExecution ? 7000 : undefined,
-          sessionId: db.getKV("session_id") || "default",
-          turnId: ulid(),
-          tools: inferenceTools,
-        },
-        (msgs, opts) => inference.chat(msgs, { ...opts, tools: inferenceTools }),
-      );
+      // Explicit creator commands bypass the autonomous router. The router's
+      // sovereign selection can pin Groq for 120s even when the direct
+      // inference client is configured to prefer Gemini. Creator work must be
+      // responsive and must not inherit autonomous routing state.
+      const directCreatorResponse = isCreatorExecution
+        ? await inference.chat(messages, {
+            model: process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.5-flash-lite",
+            maxTokens: 3500,
+            tools: inferenceTools,
+          })
+        : null;
+
+      const routerResult = directCreatorResponse
+        ? {
+            content: directCreatorResponse.message?.content || "",
+            model: directCreatorResponse.model || "creator",
+            provider: "direct",
+            inputTokens: directCreatorResponse.usage?.promptTokens || 0,
+            outputTokens: directCreatorResponse.usage?.completionTokens || 0,
+            costCents: 0,
+            latencyMs: 0,
+            toolCalls: directCreatorResponse.toolCalls,
+            finishReason: directCreatorResponse.finishReason || "stop",
+          }
+        : await inferenceRouter.route(
+            {
+              messages: messages,
+              taskType: "agent_turn",
+              tier: survivalTier,
+              sessionId: db.getKV("session_id") || "default",
+              turnId: ulid(),
+              tools: inferenceTools,
+            },
+            (msgs, opts) => inference.chat(msgs, { ...opts, tools: inferenceTools }),
+          );
 
       // Build a compatible response for the rest of the loop
       const response = {
