@@ -518,6 +518,47 @@ export async function runAgentLoop(
     logger.info("[CREATOR] Preserved explicit in-flight creator task across restart.");
   }
 
+  // One-time repair for the IGAPPLE creator test: an older build could
+  // falsely complete the active creator work with an unrelated deliverable.
+  // Reopen that exact test work once so the corrected creator pipeline can
+  // finish the real site instead of treating the false completion as final.
+  if (db.getKV("creator_igapple_repair_v1") !== "1") {
+    try {
+      const igapple = db.raw.prepare(
+        "SELECT id,title,description,status,workspace_path FROM work_items WHERE goal_id='igapple-store' AND type='creator-request' ORDER BY updated_at DESC LIMIT 1",
+      ).get() as {
+        id?: string;
+        title?: string;
+        description?: string;
+        status?: string;
+        workspace_path?: string;
+      } | undefined;
+
+      if (igapple && igapple.status === "completed") {
+        db.raw.prepare(
+          "UPDATE work_items SET status='in_progress', completed_at=NULL, summary=NULL, updated_at=datetime('now') WHERE id=?",
+        ).run(igapple.id);
+        db.setKV("creator_work_id", igapple.id);
+        db.setKV("creator_work_workspace", igapple.workspace_path || "");
+        db.setKV(
+          "creator_task_active",
+          igapple.description || "Criar o site premium da IGAPPLE e entregar uma versão testada.",
+        );
+        db.deleteKV("creator_bundle_attempted");
+        db.deleteKV("creator_work_status_seen");
+        db.deleteKV("sleep_until");
+        logger.warn("[CREATOR] Reopened the previous false-completion IGAPPLE work for corrected E2E execution.");
+      }
+
+      db.setKV("creator_igapple_repair_v1", "1");
+    } catch (error) {
+      logger.warn(
+        "[CREATOR] IGAPPLE repair skipped: " +
+          (error instanceof Error ? error.message : String(error)),
+      );
+    }
+  }
+
   // Clear the legacy persistence-check task that was used only to validate the
   // Railway volume. It is not an application task and should never keep RITTY busy.
   const legacyCreatorTask = db.getKV("creator_task_active") || "";
