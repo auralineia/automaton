@@ -14,6 +14,13 @@ import { HarnessRegistry } from "../agent/harness-registry.js";
 import { completeTask, failTask } from "./task-graph.js";
 import type { TaskNode } from "./task-graph.js";
 import { AgentWorkspace } from "./workspace.js";
+import {
+  ensureWorkForGoal,
+  startWork,
+  checkpointWork,
+  recordWorkArtifact,
+  completeWork as completeDurableWork,
+} from "./work-engine.js";
 import type {
   AutomatonConfig,
   AutomatonIdentity,
@@ -104,8 +111,24 @@ export class LocalWorkerPool {
 
   private async runWorker(workerId: string, task: TaskNode, signal: AbortSignal): Promise<void> {
     const harness = this.config.harnessRegistry.createForRole(task.agentRole);
-    const workspace = new AgentWorkspace(task.goalId);
+    const durableWork = ensureWorkForGoal(
+      this.config.db,
+      task.goalId,
+      task.title,
+      task.description,
+      path.join(path.dirname(new AgentWorkspace(task.goalId).basePath)),
+    );
+    const workspace = new AgentWorkspace(task.goalId, durableWork.workspacePath);
     const allowedEditRoot = workspace.basePath;
+    startWork(this.config.db, durableWork.id, `Worker ${workerId} resumed task ${task.id}`);
+    checkpointWork(
+      this.config.db,
+      durableWork.id,
+      "task-start",
+      "in_progress",
+      `Task ${task.id} started by ${workerId}`,
+      { taskId: task.id, workerId, role: task.agentRole ?? "generalist" },
+    );
     const workerIdentity = createWorkerIdentity(this.config.identity, workerId, task.agentRole);
     const context: HarnessContext = {
       workspaceRoot: workspace.basePath,
@@ -149,8 +172,17 @@ export class LocalWorkerPool {
       await harness.initialize(task, context);
       const result = await harness.execute();
 
+      for (const artifact of result.artifacts) {
+        recordWorkArtifact(this.config.db, durableWork.id, artifact, "task-artifact", task.title, { taskId: task.id });
+      }
+
       if (result.success) {
         completeTask(this.config.db, task.id, result);
+        checkpointWork(this.config.db, durableWork.id, "task-complete", "in_progress", `Task ${task.id} completed`, {
+          taskId: task.id,
+          output: result.output.slice(0, 4000),
+          artifacts: result.artifacts,
+        });
         logger.info("Local worker completed task", {
           workerId,
           taskId: task.id,
@@ -160,6 +192,7 @@ export class LocalWorkerPool {
         });
       } else {
         failTask(this.config.db, task.id, result.output || "Task reported failure", true);
+        checkpointWork(this.config.db, durableWork.id, "task-failed", "blocked", result.output || "Task reported failure", { taskId: task.id });
         logger.warn("Local worker reported task failure", {
           workerId,
           taskId: task.id,
@@ -171,6 +204,7 @@ export class LocalWorkerPool {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`[WORKER ${workerId}] Harness execution failed: ${message}`);
+      checkpointWork(this.config.db, durableWork.id, "task-crashed", "interrupted", message, { taskId: task.id, workerId });
       failTask(this.config.db, task.id, message, true);
     }
   }
