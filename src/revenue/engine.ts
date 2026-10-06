@@ -172,6 +172,42 @@ async function searchDuckDuckGo(query: string, limit = 6): Promise<Array<{ title
   }
 }
 
+async function searchBing(query: string, limit = 8): Promise<Array<{ title: string; url: string; snippet: string }>> {
+  const searchUrl = "https://www.bing.com/search?q=" + encodeURIComponent(query) + "&count=" + String(limit);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(searchUrl, {
+      signal: controller.signal,
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36",
+        accept: "text/html,application/xhtml+xml",
+      },
+    });
+    if (!response.ok) return [];
+    const html = await response.text();
+    const results: Array<{ title: string; url: string; snippet: string }> = [];
+    const items = html.split(/<li class="b_algo"/i).slice(1);
+    for (const item of items) {
+      if (results.length >= limit) break;
+      const match = item.match(/<h2[^>]*>\\s*<a[^>]+href="([^"]+)"[^>]*>([\\s\\S]*?)<\\/a>/i);
+      if (!match) continue;
+      const url = match[1];
+      if (!/^https?:\\/\\//i.test(url)) continue;
+      if (/(instagram\\.com|facebook\\.com|tiktok\\.com|linkedin\\.com)/i.test(url)) continue;
+      const caption = item.match(/<p[^>]*>([\\s\\S]*?)<\\/p>/i);
+      results.push({
+        title: decodeHtml(match[2]).slice(0, 220),
+        url,
+        snippet: decodeHtml(caption ? caption[1] : item.slice(0, 1200)).slice(0, 700),
+      });
+    }
+    return results;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function heuristicScore(text: string, url: string): { score: number; reasons: string[] } {
   const lower = (text + " " + url).toLowerCase();
   let score = 30;
@@ -206,7 +242,7 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
   const priceCents = Number.isFinite(options.priceCents) && (options.priceCents || 0) > 0 ? Number(options.priceCents) : DEFAULT_PRICE_CENTS;
   const query = `${niche} ${location} site:.com.br`;
   let searchResults: Array<{ title: string; url: string; snippet: string }> = [];
-  try { searchResults = await searchDuckDuckGo(query, limit); }
+  try { searchResults = await searchDuckDuckGo(query, limit); if (searchResults.length === 0) searchResults = await searchBing(query, limit); }
   catch (error) { return `Revenue engine could not search public web: ${error instanceof Error ? error.message : String(error)}`; }
 
   const candidateIds: string[] = [];
