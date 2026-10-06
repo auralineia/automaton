@@ -6,6 +6,7 @@
  */
 
 import nodePath from "node:path";
+import { exec as execCb } from "node:child_process";
 import { ulid } from "ulid";
 import type {
   AutomatonTool,
@@ -25,6 +26,26 @@ import { createLogger } from "../observability/logger.js";
 
 const logger = createLogger("tools");
 const REAL_FINANCIAL_OPERATIONS_ENABLED = process.env.RITTY_ALLOW_FINANCIAL_OPS === "true";
+
+async function executeLocalCommand(
+  command: string,
+  cwd: string,
+  timeoutMs: number,
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolve) => {
+    execCb(
+      command,
+      { cwd, timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        resolve({
+          stdout: stdout || "",
+          stderr: stderr || (error ? String(error.message || "") : ""),
+          exitCode: error?.code && typeof error.code === "number" ? error.code : error ? 1 : 0,
+        });
+      },
+    );
+  });
+}
 function financialOperationBlocked(action: string): string | null {
   if (REAL_FINANCIAL_OPERATIONS_ENABLED) return null;
   return `Blocked by RITTY safety mode: real financial operation "${action}" is disabled. No transfers, top-ups, wallet movements, trades, or purchases are allowed.`;
@@ -155,11 +176,16 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
           workspace && workspace.trim()
             ? `cd ${JSON.stringify(workspace)} && ${command}`
             : command;
+        const timeoutMs = (args.timeout as number) || 30000;
 
-        const result = await ctx.conway.exec(
-          effectiveCommand,
-          (args.timeout as number) || 30000,
-        );
+        const result =
+          process.env.RITTY_MODE === "sovereign"
+            ? await executeLocalCommand(
+                effectiveCommand,
+                workspace || process.cwd(),
+                timeoutMs,
+              )
+            : await ctx.conway.exec(effectiveCommand, timeoutMs);
         return `exit_code: ${result.exitCode}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`;
       },
     },
@@ -178,8 +204,19 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
       },
       execute: async (args, ctx) => {
         const filePath = args.path as string;
+        const activeWorkspace = ctx.inputSource === "creator"
+          ? ctx.db.getKV("creator_work_workspace")
+          : null;
+        const normalizedFilePath =
+          activeWorkspace &&
+          nodePath.resolve(filePath).startsWith(nodePath.resolve(activeWorkspace)) &&
+          nodePath.resolve(filePath) !== nodePath.resolve(activeWorkspace)
+            ? filePath
+            : activeWorkspace
+              ? nodePath.join(activeWorkspace, filePath.replace(/^\/+/, ""))
+              : filePath;
         // Path confinement: restrict writes to sandbox home directory
-        const confined = confinePathToSandbox(filePath);
+        const confined = confinePathToSandbox(normalizedFilePath);
         if (typeof confined === "object") return confined.error;
         // Guard against overwriting protected files (same check as edit_own_file)
         const { isProtectedFile } = await import("../self-mod/code.js");
@@ -951,7 +988,16 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
       },
       execute: async (args, ctx) => {
         const { runTrackedTest } = await import("../orchestration/work-engine.js");
-        return runTrackedTest(ctx.db, String(args.work_id), String(args.command), typeof args.cwd === "string" ? args.cwd : process.cwd(), typeof args.timeout_ms === "number" ? args.timeout_ms : 120000, ctx.conway);
+        return runTrackedTest(
+          ctx.db,
+          String(args.work_id),
+          String(args.command),
+          typeof args.cwd === "string"
+            ? args.cwd
+            : (ctx.inputSource === "creator" ? ctx.db.getKV("creator_work_workspace") || process.cwd() : process.cwd()),
+          typeof args.timeout_ms === "number" ? args.timeout_ms : 120000,
+          process.env.RITTY_MODE === "sovereign" ? undefined : ctx.conway,
+        );
       },
     },
     {
