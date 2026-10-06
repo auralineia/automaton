@@ -781,17 +781,45 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         required: ["title", "description"],
       },
       execute: async (args, ctx) => {
-        const { createWork } = await import("../orchestration/work-engine.js");
+        const { createWork, startWork, getWork, ensureWorkSchema } = await import("../orchestration/work-engine.js");
+        ensureWorkSchema(ctx.db);
+
+        // Creator work often arrives without a goal id. Reuse the latest
+        // unfinished creator work instead of creating duplicate jobs every turn.
+        const requestedGoal = typeof args.goal_id === "string" ? args.goal_id : undefined;
+        let workId: string | undefined = requestedGoal
+          ? (ctx.db.raw.prepare("SELECT id FROM work_items WHERE goal_id=? ORDER BY updated_at DESC LIMIT 1").get(requestedGoal) as { id?: string } | undefined)?.id
+          : undefined;
+
+        if (!workId && ctx.inputSource === "creator") {
+          workId = (ctx.db.raw.prepare(
+            "SELECT id FROM work_items WHERE status NOT IN ('completed','failed') ORDER BY updated_at DESC LIMIT 1",
+          ).get() as { id?: string } | undefined)?.id;
+        }
+
+        if (workId) {
+          let existing = getWork(ctx.db, workId);
+          if (existing && existing.status !== "in_progress") {
+            existing = startWork(ctx.db, existing.id, "Creator task resumed automatically");
+          } else if (existing) {
+            startWork(ctx.db, existing.id, "Creator task continued");
+            existing = getWork(ctx.db, existing.id);
+          }
+          return JSON.stringify(existing, null, 2);
+        }
+
         const work = createWork(ctx.db, {
-          title: String(args.title || ""),
-          description: String(args.description || ""),
+          title: String(args.title || "Untitled work"),
+          description: String(args.description || "Complete the requested deliverable and verify it."),
           type: typeof args.type === "string" ? args.type : undefined,
-          goalId: typeof args.goal_id === "string" ? args.goal_id : undefined,
+          goalId: requestedGoal,
           repoPath: typeof args.repo_path === "string" ? args.repo_path : undefined,
           customer: typeof args.customer === "string" ? args.customer : undefined,
           successCriteria: typeof args.success_criteria === "string" ? args.success_criteria : undefined,
         });
-        return JSON.stringify(work, null, 2);
+        // Do not require a second inference turn just to start the durable job.
+        const started = startWork(ctx.db, work.id, "Creator task started");
+        return JSON.stringify(started, null, 2);
       },
     },
     {
@@ -799,11 +827,19 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
       description: "Show durable work status, last checkpoint and workspace path.",
       category: "memory",
       riskLevel: "safe",
-      parameters: { type: "object", properties: { work_id: { type: "string" } }, required: ["work_id"] },
+      parameters: { type: "object", properties: { work_id: { type: "string" } } },
       execute: async (args, ctx) => {
-        const { getWork } = await import("../orchestration/work-engine.js");
-        const work = getWork(ctx.db, String(args.work_id));
-        return work ? JSON.stringify(work, null, 2) : `Work not found: ${args.work_id}`;
+        const { getWork, ensureWorkSchema } = await import("../orchestration/work-engine.js");
+        ensureWorkSchema(ctx.db);
+        let id = typeof args.work_id === "string" && args.work_id.trim() ? args.work_id.trim() : "";
+        if (!id) {
+          id = (ctx.db.raw.prepare(
+            "SELECT id FROM work_items WHERE status NOT IN ('completed','failed') ORDER BY updated_at DESC LIMIT 1",
+          ).get() as { id?: string } | undefined)?.id || "";
+        }
+        if (!id) return "No unfinished work exists. Use work_create now.";
+        const work = getWork(ctx.db, id);
+        return work ? JSON.stringify(work, null, 2) : `Work not found: ${id}`;
       },
     },
     {
@@ -3607,41 +3643,9 @@ function sovereignToolIndex(tools: AutomatonTool[]): string {
 export function toolsToInferenceFormat(
   tools: AutomatonTool[],
 ): InferenceToolDefinition[] {
-  if (process.env.RITTY_MODE === "sovereign") {
-    const names = tools
-      .filter((t) => t.name !== "invoke_tool")
-      .map((t) => t.name)
-      .join(", ");
-    return [
-      {
-        type: "function" as const,
-        function: {
-          name: "invoke_tool",
-          description:
-            `Invoke one Automaton tool by exact name. Choose the concrete target tool in tool_name — never set tool_name to "invoke_tool". Valid targets: ${names}. ` +
-            `Put the target tool arguments directly in arguments. For exec use {"command":"...","timeout":30000}; never use cmd arrays. ` +
-            `For write_file use {"path":"...","content":"..."}. For no-argument tools use {}.`,
-          parameters: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              tool_name: {
-                type: "string",
-                description: "Exact Automaton tool name.",
-              },
-              arguments: {
-                type: "object",
-                description: "Arguments for the selected Automaton tool. Use {} when it takes no arguments.",
-                additionalProperties: true,
-              },
-            },
-            required: ["tool_name", "arguments"],
-          },
-        },
-      },
-    ];
-  }
-
+  // Sovereign runtime now uses concrete tool definitions directly. The old
+  // generic invoke_tool wrapper caused recursive/self-wrapping calls and wasted
+  // inference turns, especially on fallback models.
   return tools.map((t) => ({
     type: "function" as const,
     function: {
