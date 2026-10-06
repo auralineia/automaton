@@ -459,7 +459,7 @@ export async function runTrackedTest(
   ensureWorkSchema(db);
   const started = Date.now();
   const result = runner
-    ? await runner.exec(command, timeoutMs)
+    ? await runner.exec(`cd ${shellQuote(cwd)} && ${command}`, timeoutMs)
     : await new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
         execCb(command, { cwd, timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
           resolve({
