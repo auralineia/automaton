@@ -190,7 +190,7 @@ export function createInferenceClient(
         geminiApiKey
       ) {
         const groqMessage = error instanceof Error ? error.message : String(error);
-        const fallbackModel = process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.8-flash";
+        const fallbackModel = process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.5-flash-lite";
         const fallbackBody: Record<string, unknown> = {
           ...body,
           model: fallbackModel,
