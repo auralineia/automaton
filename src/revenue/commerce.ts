@@ -156,10 +156,10 @@ function decodeHtml(input: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/<script[\\s\\S]*?<\\/script>/gi, " ")
-    .replace(/<style[\\s\\S]*?<\\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<[^>]+>/g, " ")
-    .replace(/\\s+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -191,30 +191,30 @@ async function fetchPublicPage(rawUrl: string): Promise<{
     });
 
     const html = (await response.text()).slice(0, 900000);
-    const titleMatch = html.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i);
+    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     const text = decodeHtml(html).slice(0, 18000);
 
     const emails = Array.from(
       new Set(
-        (html.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi) || [])
+        (html.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [])
           .map((x) => x.toLowerCase())
-          .filter((x) => !/example\\.(com|org|net)$/.test(x))
+          .filter((x) => !/example\.(com|org|net)$/.test(x))
           .slice(0, 8),
       ),
     );
 
     const phones = Array.from(
       new Set(
-        (html.match(/(?:\\+?55\\s?)?(?:\\(?\\d{2}\\)?\\s?)?\\d{4,5}[-.\\s]?\\d{4}/g) || [])
-          .map((x) => x.replace(/[^\\d+]/g, ""))
-          .filter((x) => x.replace(/\\D/g, "").length >= 10)
+        (html.match(/(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?\d{4,5}[-.\s]?\d{4}/g) || [])
+          .map((x) => x.replace(/[^\d+]/g, ""))
+          .filter((x) => x.replace(/\D/g, "").length >= 10)
           .slice(0, 8),
       ),
     );
 
     const whatsappMatch =
-      html.match(/https?:\\/\\/(?:api\\.)?wa\\.me\\/\\d+[^"'\\s<]*/i) ||
-      html.match(/https?:\\/\\/(?:www\\.)?whatsapp\\.com[^"'\\s<]*/i);
+      html.match(/https?:\/\/(?:api\.)?wa\.me\/\d+[^"'\s<]*/i) ||
+      html.match(/https?:\/\/(?:www\.)?whatsapp\.com[^"'\s<]*/i);
     const whatsapp = whatsappMatch ? whatsappMatch[0] : null;
 
     const links = Array.from(html.matchAll(/href=["']([^"']+)["']/gi)).map((m) => m[1]);
@@ -223,12 +223,12 @@ async function fetchPublicPage(rawUrl: string): Promise<{
       ? new URL(contactLink, response.url || url.toString()).toString()
       : null;
     const socials = links
-      .filter((href) => /instagram\\.com|facebook\\.com|tiktok\\.com/i.test(href))
+      .filter((href) => /instagram\.com|facebook\.com|tiktok\.com/i.test(href))
       .slice(0, 6);
 
     const signals: string[] = [];
     const lower = (html + " " + text).toLowerCase();
-    if (!/^https:\\/\\//i.test(response.url || url.toString())) {
+    if (!/^https:\/\//i.test(response.url || url.toString())) {
       signals.push("O site pesquisado não terminou em HTTPS.");
     }
     if (!/<meta[^>]+name=["']viewport["'][^>]*>/i.test(html)) {
@@ -237,7 +237,7 @@ async function fetchPublicPage(rawUrl: string): Promise<{
     if (/site em construção|under construction|coming soon|em breve|em manutenc/i.test(lower)) {
       signals.push("A presença digital parece incompleta ou em manutenção.");
     }
-    if (/whatsapp|wa\\.me/i.test(lower)) {
+    if (/whatsapp|wa\.me/i.test(lower)) {
       signals.push("Há canal público de WhatsApp detectável.");
     }
     if (/instagram|facebook|tiktok/i.test(lower)) {
@@ -348,12 +348,12 @@ function buildDemoSite(lead: any): {
   const opportunity = String(
     lead.opportunity || "Uma presença digital mais clara e orientada à conversão.",
   )
-    .replace(/\\s+/g, " ")
+    .replace(/\s+/g, " ")
     .slice(0, 320);
   const phone = String(lead.phone || lead.contact || "").replace(/[^0-9+]/g, "");
   const email = String(lead.email || "");
   const cta = phone
-    ? "https://wa.me/" + phone.replace(/^\\+/, "")
+    ? "https://wa.me/" + phone.replace(/^\+/, "")
     : email
       ? "mailto:" + email
       : "#contato";
@@ -459,7 +459,7 @@ export async function enrichLead(db: AutomatonDatabase, leadId: string): Promise
         website: lead.website,
         email: lead.email || null,
         phone: lead.phone || null,
-        whatsapp: lead.contact_url && /whatsapp|wa\\.me/i.test(lead.contact_url) ? lead.contact_url : null,
+        whatsapp: lead.contact_url && /whatsapp|wa\.me/i.test(lead.contact_url) ? lead.contact_url : null,
         contactUrl: lead.contact_url || null,
         opportunity: lead.opportunity || null,
         evidenceUrl: lead.evidence_url || lead.website || null,
@@ -510,7 +510,7 @@ export async function prepareOutreach(
           }),
         "",
         "Este documento foi gerado automaticamente com base em informações públicas.",
-      ].join("\\n"),
+      ].join("\n"),
       "utf8",
     );
     db.raw
@@ -568,7 +568,7 @@ export async function prepareOutreach(
     args.customContext ? String(args.customContext).slice(0, 1200) : "",
   ]
     .filter(Boolean)
-    .join("\\n");
+    .join("\n");
 
   const existing = db.raw
     .prepare(
@@ -777,7 +777,7 @@ export function recordLeadResponse(
     .prepare("UPDATE revenue_leads SET status=?,notes=COALESCE(notes,'') || ?,updated_at=? WHERE id=?")
     .run(
       args.stage,
-      "\\nResposta (" + now() + "): " + responseText,
+      "\nResposta (" + now() + "): " + responseText,
       now(),
       lead.id,
     );
@@ -1121,7 +1121,7 @@ function buildFinalSite(lead: any): {
   const email = String(lead.email || "");
   const phone = String(lead.phone || lead.contact || "").replace(/[^0-9+]/g, "");
   const cta = phone
-    ? "https://wa.me/" + phone.replace(/^\\+/, "")
+    ? "https://wa.me/" + phone.replace(/^\+/, "")
     : email
       ? "mailto:" + email
       : "#contato";
@@ -1185,7 +1185,7 @@ async function sendDeliveryEmail(
       "",
       "Obrigado,",
       "RITTY",
-    ].join("\\n"),
+    ].join("\n"),
   );
 }
 
@@ -1223,8 +1223,8 @@ async function publishVercel(
     );
   }
 
-  if (payload.url) return "https://" + String(payload.url).replace(/^https?:\\/\\//, "");
-  if (Array.isArray(payload.alias) && payload.alias[0]) return "https://" + String(payload.alias[0]).replace(/^https?:\\/\\//, "");
+  if (payload.url) return "https://" + String(payload.url).replace(/^https?:\/\//, "");
+  if (Array.isArray(payload.alias) && payload.alias[0]) return "https://" + String(payload.alias[0]).replace(/^https?:\/\//, "");
   return null;
 }
 
