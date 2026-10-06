@@ -787,6 +787,19 @@ export async function runAgentLoop(
       ).get();
       const creatorTaskActive = !!db.getKV("creator_task_active");
 
+      if (
+        (creatorWaiting || creatorTaskActive) &&
+        process.env.RITTY_MODE === "sovereign" &&
+        process.env.RITTY_SOVEREIGN_PRIMARY_PROVIDER !== "groq" &&
+        process.env.GEMINI_API_KEY &&
+        db.getKV("creator_provider_backoff_reset") !== "1"
+      ) {
+        db.deleteKV("inference_backoff_until");
+        db.deleteKV("sleep_until");
+        db.setKV("creator_provider_backoff_reset", "1");
+        log(config, "[CREATOR] Cleared stale provider backoff for explicit creator work.");
+      }
+
       // Provider quota exhaustion is a global runtime condition. Never enter
       // another autonomous inference cycle until the durable backoff expires.
       // Explicit creator commands may still wake the runtime.
@@ -1359,12 +1372,14 @@ export async function runAgentLoop(
       const creatorWorkActive = !!db.getKV("creator_work_id") && !!db.raw.prepare(
         "SELECT 1 FROM work_items WHERE id=? AND status NOT IN ('completed','failed') LIMIT 1",
       ).get(db.getKV("creator_work_id"));
+      const creatorWorkStatusSeen = db.getKV("creator_work_status_seen") === "1";
       const inferenceToolSource =
         currentInput?.source === "creator"
           ? tools.filter((tool) =>
               creatorToolSet.has(tool.name) &&
               !CREATOR_BLOCKED_TOOLS.has(tool.name) &&
-              !(creatorWorkActive && tool.name === "work_create")
+              !(creatorWorkActive && tool.name === "work_create") &&
+              !(creatorWorkStatusSeen && tool.name === "work_status")
             )
           : activeGoalExists
             ? tools.filter((tool) => !isIdleOnlyTool(tool.name) && tool.name !== "create_goal")
