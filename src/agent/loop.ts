@@ -73,6 +73,42 @@ const MAX_TOOL_CALLS_PER_TURN = 10;
 const MAX_CONSECUTIVE_ERRORS = 5;
 const MAX_REPETITIVE_TURNS = 3;
 
+// Autonomous value-creation is intentionally low-frequency. A self-directed
+// cycle should never continuously consume the provider quota just because the
+// process is alive. Creator commands remain immediate and bypass this gate.
+const DEFAULT_AUTONOMOUS_CYCLE_INTERVAL_MS = 12 * 60 * 60 * 1000;
+
+function getAutonomousCycleIntervalMs(): number {
+  const configured = Number(process.env.RITTY_AUTONOMOUS_CYCLE_INTERVAL_MS);
+  if (Number.isFinite(configured) && configured >= 60_000) {
+    return Math.floor(configured);
+  }
+  return DEFAULT_AUTONOMOUS_CYCLE_INTERVAL_MS;
+}
+
+function isAutonomousCycleDue(db: AutomatonDatabase): boolean {
+  const lastSeeded = db.getKV("autonomy.last_seeded_at");
+  if (!lastSeeded) return true;
+  const timestamp = Date.parse(lastSeeded);
+  if (!Number.isFinite(timestamp)) return true;
+  return Date.now() - timestamp >= getAutonomousCycleIntervalMs();
+}
+
+function getFutureBackoff(db: AutomatonDatabase): string | null {
+  const value = db.getKV("inference_backoff_until");
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    db.deleteKV("inference_backoff_until");
+    return null;
+  }
+  if (timestamp <= Date.now()) {
+    db.deleteKV("inference_backoff_until");
+    return null;
+  }
+  return value;
+}
+
 /**
  * Sovereign mode wraps every underlying tool call in the generic
  * "invoke_tool" function. Loop/idle/sleep detection must reason about the
@@ -746,6 +782,25 @@ export async function runAgentLoop(
         "SELECT 1 FROM inbox_messages WHERE status = 'received' AND from_address = 'dashboard://creator' LIMIT 1",
       ).get();
       const creatorTaskActive = !!db.getKV("creator_task_active");
+
+      // Provider quota exhaustion is a global runtime condition. Never enter
+      // another autonomous inference cycle until the durable backoff expires.
+      // Explicit creator commands may still wake the runtime.
+      const inferenceBackoffUntil = getFutureBackoff(db);
+      if (
+        inferenceBackoffUntil &&
+        !creatorWaiting &&
+        !creatorTaskActive &&
+        pendingInput?.source !== "creator"
+      ) {
+        log(config, `[BACKOFF] Inference quota exhausted. Sleeping until ${inferenceBackoffUntil}`);
+        db.setKV("sleep_until", inferenceBackoffUntil);
+        db.setAgentState("sleeping");
+        onStateChange?.("sleeping");
+        running = false;
+        break;
+      }
+
       // Check if we should be sleeping, but never sleep through creator work.
       const sleepUntil = db.getKV("sleep_until");
       if (
@@ -813,7 +868,8 @@ export async function runAgentLoop(
         pendingInput?.source !== "creator" &&
         !db.getKV("creator_task_active") &&
         db.raw.prepare("SELECT 1 FROM inbox_messages WHERE status = 'received' AND from_address = 'dashboard://creator' LIMIT 1").get() == null &&
-        getActiveGoals(db.raw).length === 0
+        getActiveGoals(db.raw).length === 0 &&
+        isAutonomousCycleDue(db)
       ) {
         try {
           const goalId = insertGoal(db.raw, {
@@ -830,7 +886,11 @@ export async function runAgentLoop(
               "Prioritize concrete output over status checks and never wait merely because the creator is silent.",
             expectedRevenueCents: 0,
           });
-          logger.info("[AUTONOMY] Seeded self-directed value-creation goal.", { goalId });
+          db.setKV("autonomy.last_seeded_at", new Date().toISOString());
+          logger.info("[AUTONOMY] Seeded self-directed value-creation goal.", {
+            goalId,
+            nextEligibleInMs: getAutonomousCycleIntervalMs(),
+          });
         } catch (error) {
           logger.warn(
             `[AUTONOMY] Self-directed goal seed skipped: ${error instanceof Error ? error.message : String(error)}`,
@@ -1079,6 +1139,23 @@ export async function runAgentLoop(
       if (orchestrator && pendingInput?.source !== "creator") {
         const orchestratorTick = await orchestrator.tick();
         db.setKV("orchestrator.last_tick", JSON.stringify(orchestratorTick));
+
+        // A worker can discover exhausted provider quota during this tick.
+        // Stop the parent loop immediately instead of allowing a follow-up
+        // parent inference in the same iteration.
+        const postTickBackoff = getFutureBackoff(db);
+        if (
+          postTickBackoff &&
+          pendingInput?.source !== "creator"
+        ) {
+          log(config, `[BACKOFF] Provider quota exhausted during orchestration. Sleeping until ${postTickBackoff}`);
+          db.setKV("sleep_until", postTickBackoff);
+          db.setAgentState("sleeping");
+          onStateChange?.("sleeping");
+          running = false;
+          break;
+        }
+
         const localWorkersActive = workerPool?.getActiveCount() ?? 0;
         const hasSelfAssignedParentTask = !!db.raw.prepare(
           `SELECT 1 FROM task_graph WHERE assigned_to = ? AND status IN ('assigned', 'running') LIMIT 1`,
