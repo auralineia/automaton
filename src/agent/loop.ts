@@ -1376,14 +1376,20 @@ export async function runAgentLoop(
         "SELECT 1 FROM work_items WHERE status NOT IN ('completed','failed') ORDER BY updated_at DESC LIMIT 1",
       ).get();
       const creatorWorkStatusSeen = db.getKV("creator_work_status_seen") === "1";
+      const creatorBundleAttempted = db.getKV("creator_bundle_attempted") === "1";
       const inferenceToolSource =
         currentInput?.source === "creator"
-          ? tools.filter((tool) =>
-              creatorToolSet.has(tool.name) &&
-              !CREATOR_BLOCKED_TOOLS.has(tool.name) &&
-              !(creatorWorkActive && tool.name === "work_create") &&
-              !(creatorWorkStatusSeen && tool.name === "work_status")
-            )
+          ? tools.filter((tool) => {
+              if (creatorWorkActive && !creatorBundleAttempted) {
+                return new Set(["work_execute", "work_status", "work_resume", "read_file"]).has(tool.name);
+              }
+              return (
+                creatorToolSet.has(tool.name) &&
+                !CREATOR_BLOCKED_TOOLS.has(tool.name) &&
+                !(creatorWorkActive && tool.name === "work_create") &&
+                !(creatorWorkStatusSeen && tool.name === "work_status")
+              );
+            })
           : activeGoalExists
             ? tools.filter((tool) => !isIdleOnlyTool(tool.name) && tool.name !== "create_goal")
             : tools;
