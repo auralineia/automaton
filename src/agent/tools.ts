@@ -1469,6 +1469,215 @@ const form=document.getElementById("contact-form"), note=document.getElementById
       },
     },
 
+
+    // ── Revenue Commerce Engine ──
+    {
+      name: "revenue_enrich_lead",
+      description:
+        "Research one real prospect using its public website. Extract only public contact evidence (email, phone, WhatsApp/contact URL) and store the opportunity. Never invent a lead or contact.",
+      category: "memory",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          lead_id: { type: "string", description: "Existing revenue lead ID." },
+        },
+        required: ["lead_id"],
+      },
+      execute: async (args, ctx) => {
+        const { enrichLead } = await import("../revenue/commerce.js");
+        return enrichLead(ctx.db, String(args.lead_id));
+      },
+    },
+    {
+      name: "revenue_prepare_outreach",
+      description:
+        "Prepare a personalized sales message for a real qualified lead. Creates a durable public demo when no preview exists and stores the message as pending human approval. It NEVER sends by itself.",
+      category: "memory",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          lead_id: { type: "string" },
+          preview_url: { type: "string" },
+          channel: { type: "string", enum: ["email", "manual"] },
+          custom_context: { type: "string" },
+        },
+        required: ["lead_id"],
+      },
+      execute: async (args, ctx) => {
+        const { prepareOutreach } = await import("../revenue/commerce.js");
+        return prepareOutreach(ctx.db, {
+          leadId: String(args.lead_id),
+          previewUrl: typeof args.preview_url === "string" ? args.preview_url : undefined,
+          channel: args.channel === "manual" ? "manual" : "email",
+          customContext: typeof args.custom_context === "string" ? args.custom_context : undefined,
+        });
+      },
+    },
+    {
+      name: "revenue_approve_outreach",
+      description:
+        "Approve a prepared outreach action. Human approval only: this tool is blocked for autonomous execution.",
+      category: "memory",
+      riskLevel: "dangerous",
+      parameters: {
+        type: "object",
+        properties: { action_id: { type: "string" } },
+        required: ["action_id"],
+      },
+      execute: async (args, ctx) => {
+        if (ctx.inputSource !== "creator") {
+          return "Blocked: outreach approval requires an explicit creator action.";
+        }
+        const { approveOutreach } = await import("../revenue/commerce.js");
+        return approveOutreach(ctx.db, String(args.action_id));
+      },
+    },
+    {
+      name: "revenue_send_approved_outreach",
+      description:
+        "Send one already-approved outreach email through Resend. It never approves an action and never sends without prior human approval.",
+      category: "memory",
+      riskLevel: "dangerous",
+      parameters: {
+        type: "object",
+        properties: { action_id: { type: "string" } },
+        required: ["action_id"],
+      },
+      execute: async (args, ctx) => {
+        if (ctx.inputSource !== "creator") {
+          return "Blocked: external outreach sending requires explicit creator execution.";
+        }
+        const { sendApprovedOutreach } = await import("../revenue/commerce.js");
+        return sendApprovedOutreach(ctx.db, String(args.action_id));
+      },
+    },
+    {
+      name: "revenue_record_response",
+      description:
+        "Advance a real lead after an actual human/customer response: replied, interested, or lost. For interested leads it creates a pending checkout approval action.",
+      category: "memory",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          lead_id: { type: "string" },
+          stage: { type: "string", enum: ["replied", "interested", "lost"] },
+          response: { type: "string" },
+        },
+        required: ["lead_id", "stage", "response"],
+      },
+      execute: async (args, ctx) => {
+        const { recordLeadResponse } = await import("../revenue/commerce.js");
+        return recordLeadResponse(ctx.db, {
+          leadId: String(args.lead_id),
+          stage: args.stage as "replied" | "interested" | "lost",
+          response: String(args.response || ""),
+        });
+      },
+    },
+    {
+      name: "revenue_approve_checkout",
+      description:
+        "Approve a customer checkout action. Human approval only; RITTY cannot self-approve billing.",
+      category: "memory",
+      riskLevel: "dangerous",
+      parameters: {
+        type: "object",
+        properties: { action_id: { type: "string" } },
+        required: ["action_id"],
+      },
+      execute: async (args, ctx) => {
+        if (ctx.inputSource !== "creator") {
+          return "Blocked: checkout approval requires an explicit creator action.";
+        }
+        const { approveCheckout } = await import("../revenue/commerce.js");
+        return approveCheckout(ctx.db, String(args.action_id));
+      },
+    },
+    {
+      name: "revenue_create_checkout",
+      description:
+        "Create a real Stripe customer checkout for an interested lead. This charges the customer, not RITTY. Autonomous use requires a previously approved checkout action; creator execution may approve directly.",
+      category: "memory",
+      riskLevel: "dangerous",
+      parameters: {
+        type: "object",
+        properties: {
+          lead_id: { type: "string" },
+          offer_id: { type: "string" },
+          amount_cents: { type: "number" },
+          approved: { type: "boolean" },
+        },
+        required: ["lead_id"],
+      },
+      execute: async (args, ctx) => {
+        const { createStripeCheckout } = await import("../revenue/commerce.js");
+        return createStripeCheckout(ctx.db, {
+          leadId: String(args.lead_id),
+          offerId: typeof args.offer_id === "string" ? args.offer_id : undefined,
+          amountCents: typeof args.amount_cents === "number" ? args.amount_cents : undefined,
+          approved: ctx.inputSource === "creator" && args.approved === true,
+        });
+      },
+    },
+    {
+      name: "revenue_fulfill_paid_order",
+      description:
+        "Recovery tool for a payment that is already confirmed. Creates the final site, validates it, attempts Vercel publication when configured, and delivers the result. Never spends RITTY funds.",
+      category: "memory",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: { lead_id: { type: "string" }, offer_id: { type: "string" } },
+        required: ["lead_id"],
+      },
+      execute: async (args, ctx) => {
+        const { fulfillPaidOrder } = await import("../revenue/commerce.js");
+        return fulfillPaidOrder(
+          ctx.db,
+          String(args.lead_id),
+          typeof args.offer_id === "string" ? args.offer_id : undefined,
+        );
+      },
+    },
+    {
+      name: "revenue_record_cost",
+      description:
+        "Record a real API/operational cost in the revenue ledger so net profit is not fictional.",
+      category: "memory",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          amount_cents: { type: "number" },
+          category: { type: "string" },
+          description: { type: "string" },
+        },
+        required: ["amount_cents", "category"],
+      },
+      execute: async (args, ctx) => {
+        const { recordRevenueCost } = await import("../revenue/commerce.js");
+        return recordRevenueCost(ctx.db, {
+          amountCents: Number(args.amount_cents),
+          category: String(args.category),
+          description: typeof args.description === "string" ? args.description : undefined,
+        });
+      },
+    },
+    {
+      name: "revenue_metrics",
+      description:
+        "Show the measurable revenue funnel: leads, contacts, responses, proposals, sales, revenue, recorded costs, net profit and conversion rates.",
+      category: "memory",
+      riskLevel: "safe",
+      parameters: { type: "object", properties: {} },
+      execute: async (_args, ctx) => {
+        const { revenueMetrics } = await import("../revenue/commerce.js");
+        return revenueMetrics(ctx.db);
+      },
+    },
     // ── Survival Tools ──
     {
       name: "sleep",
