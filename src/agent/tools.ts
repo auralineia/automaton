@@ -791,7 +791,7 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
       name: "revenue_pipeline",
       description:
         "Show the real revenue pipeline stored in the persistent database: leads, qualified prospects, proposals, pending approvals, and creator-confirmed revenue.",
-      category: "general",
+      category: "memory",
       riskLevel: "safe",
       parameters: { type: "object", properties: {} },
       execute: async (_args, ctx) => {
@@ -803,7 +803,7 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
       name: "revenue_next_action",
       description:
         "Return the highest-priority pending revenue action requiring creator review before any external outreach.",
-      category: "general",
+      category: "memory",
       riskLevel: "safe",
       parameters: { type: "object", properties: {} },
       execute: async (_args, ctx) => {
@@ -815,7 +815,7 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
       name: "record_confirmed_revenue",
       description:
         "Record a sale that the creator has explicitly confirmed as received. This only writes accounting data; it never moves money or performs a payment.",
-      category: "general",
+      category: "memory",
       riskLevel: "caution",
       parameters: {
         type: "object",
