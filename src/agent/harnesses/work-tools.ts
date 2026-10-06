@@ -26,6 +26,49 @@ function resolveWorkId(context: HarnessContext, explicit?: string): string | nul
 export function createWorkHarnessTools(context: HarnessContext): HarnessTool[] {
   return [
     {
+      name: "work_execute",
+      description: "Execute a durable work bundle in one call: write files, run validation, register artifacts, checkpoint, and complete only if the validation passes.",
+      parameters: {
+        type: "object",
+        properties: {
+          work_id: { type: "string" },
+          title: { type: "string" },
+          description: { type: "string" },
+          files: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: { path: { type: "string" }, content: { type: "string" } },
+              required: ["path", "content"],
+            },
+          },
+          test_command: { type: "string" },
+          artifacts: { type: "array", items: { type: "string" } },
+          summary: { type: "string" },
+        },
+        required: ["files", "test_command"],
+      },
+      execute: async (args) => {
+        const workId = typeof args.work_id === "string" && args.work_id.trim()
+          ? args.work_id.trim()
+          : resolveWorkId(context) || "";
+        if (!workId) return "No work item exists yet. Create one with work_create.";
+        const { executeWorkBundle } = await import("../../orchestration/work-engine.js");
+        const result = await executeWorkBundle(
+          context.db,
+          workId,
+          {
+            files: Array.isArray(args.files) ? args.files as Array<{ path: string; content: string }> : [],
+            testCommand: String(args.test_command || ""),
+            artifacts: Array.isArray(args.artifacts) ? args.artifacts as string[] : [],
+            summary: typeof args.summary === "string" ? args.summary : undefined,
+          },
+          process.env.RITTY_MODE === "sovereign" ? undefined : context.conway,
+        );
+        return JSON.stringify(result, null, 2);
+      },
+    },
+    {
       name: "work_status",
       description: "Inspect the durable work item, latest checkpoint, artifacts and recent tests. Use this before resuming interrupted work.",
       parameters: {
