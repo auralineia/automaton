@@ -813,6 +813,17 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
             startWork(ctx.db, existing.id, "Creator task continued");
             existing = getWork(ctx.db, existing.id);
           }
+          if (existing && typeof args.title === "string" && String(args.title).trim() || existing && typeof args.description === "string" && String(args.description).trim() || existing && typeof args.success_criteria === "string" && String(args.success_criteria).trim()) {
+            ctx.db.raw.prepare(
+              "UPDATE work_items SET title=COALESCE(NULLIF(?,''),title), description=COALESCE(NULLIF(?,''),description), success_criteria=COALESCE(NULLIF(?,''),success_criteria), updated_at=datetime('now') WHERE id=?",
+            ).run(
+              typeof args.title === "string" ? args.title.trim() : "",
+              typeof args.description === "string" ? args.description.trim() : "",
+              typeof args.success_criteria === "string" ? args.success_criteria.trim() : "",
+              existing.id,
+            );
+            existing = getWork(ctx.db, existing.id);
+          }
           if (existing && ctx.inputSource === "creator") {
             ctx.db.setKV("creator_work_id", existing.id);
             ctx.db.setKV("creator_work_workspace", existing.workspacePath);
@@ -854,7 +865,15 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
           ).get() as { id?: string } | undefined)?.id || "";
         }
         if (!id) return "No unfinished work exists. Use work_create now.";
-        const work = getWork(ctx.db, id);
+        let work = getWork(ctx.db, id);
+        if (work && ctx.inputSource === "creator") {
+          if (work.status === "interrupted" || work.status === "paused" || work.status === "blocked") {
+            work = startWork(ctx.db, work.id, "Creator job automatically resumed from durable state");
+          }
+          ctx.db.setKV("creator_work_id", work.id);
+          ctx.db.setKV("creator_work_workspace", work.workspacePath);
+          ctx.db.setKV("creator_work_status_seen", "1");
+        }
         return work ? JSON.stringify(work, null, 2) : `Work not found: ${id}`;
       },
     },
