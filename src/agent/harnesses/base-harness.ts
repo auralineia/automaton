@@ -57,6 +57,8 @@ export abstract class BaseHarness implements AgentHarness {
       `**Role:** ${this.task.agentRole ?? "generalist"}`,
       `**Task ID:** ${this.task.id}`,
       `**Goal ID:** ${this.task.goalId}`,
+      `**Workspace:** ${this.context.workspaceRoot}`,
+
     ];
 
     if (this.task.dependencies.length > 0) {
