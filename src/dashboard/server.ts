@@ -421,13 +421,20 @@ export function startDashboardServer(options: { db: AutomatonDatabase; config: A
 
       try {
         const work = getWork(db, workId);
-        if (!work || !["completed", "publish_pending_approval"].includes(work.status)) {
+        // A completed workspace is persistent even if the SQLite work row was
+        // recovered/reclassified during a restart. Preview must follow the
+        // durable artifact, not fail just because the metadata row changed.
+        const workspacePath =
+          work?.workspacePath ||
+          path.join(process.env.AUTOMATON_WORK_ROOT || "/root/.automaton/work", workId);
+
+        if (work && !["completed", "publish_pending_approval"].includes(work.status)) {
           res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
-          res.end("preview_not_found");
+          res.end("preview_not_ready");
           return;
         }
 
-        const workspaceRoot = path.resolve(work.workspacePath);
+        const workspaceRoot = path.resolve(workspacePath);
         const requested = decodeURIComponent(relativePath);
         const filePath = path.resolve(workspaceRoot, requested);
 
