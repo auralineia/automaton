@@ -1279,6 +1279,7 @@ export async function runAgentLoop(
             "improving an existing product, or drafting a truthful offer. Continue active non-transactional business goals autonomously. " +
             "Never initiate transfers, trades, wallet actions, crypto transactions, currency conversion, payments, purchases, paid deployments, " +
             "or binding contracts without explicit creator approval. Never spam or send external sales messages without approval. " +
+            "For substantial work, create or resume a durable work item, checkpoint meaningful progress, run verification tests, register deliverables, and complete the work only after validation. " +
             "If blocked, record the precise blocker and choose another safe productive step; sleep only when no safe useful work is available.",
         });
       }
@@ -1303,7 +1304,8 @@ export async function runAgentLoop(
             "Node.js runtime and built-in modules whenever possible. The sovereign sandbox home is /root; " +
             "do NOT use /home/ritty, /home/agent, or other assumed home directories. Create application source files in " +
             "/root/workspace/<project> (or ./workspace/<project>) and verify them with the exec tool. Node.js and pnpm " +
-            "are available at runtime; npm and Python may not be installed. Do not stop at a plan or explanation.",
+            "are available at runtime; npm and Python may not be installed. For substantial work, use the durable work tools " +
+            "(work_create/work_resume/work_checkpoint/work_test/work_artifact/work_complete) so the job survives restarts. Do not stop at a plan or explanation.",
         });
       }
 
