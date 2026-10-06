@@ -764,6 +764,10 @@ export async function runAgentLoop(
   let idleTurnCount = 0;
 
   const maxCycleTurns = config.maxTurnsPerCycle ?? 25;
+  const maxAutonomousCycleTurns = Math.max(
+    1,
+    Number(process.env.RITTY_MAX_AUTONOMOUS_TURNS || "6"),
+  );
   let cycleTurnCount = 0;
 
   // Check creator/inbox work before the synthetic wakeup prompt.
@@ -859,11 +863,29 @@ export async function runAgentLoop(
         }
       }
 
-      // Self-starting autonomy: when there is no creator command and no active
-      // goal, seed exactly one safe value-creation goal so the orchestrator has
-      // concrete work to plan and delegate. This is intentionally non-transactional:
-      // anything involving transfers, payments, purchases, wallets, or contracts
-      // still requires explicit creator approval through the tool policy.
+      // Revenue autonomy: retire the old generic value-creation queue without deleting history,
+      // then seed one concrete revenue-acquisition cycle every configured interval.
+      if (pendingInput?.source !== "creator") {
+        try {
+          const legacyGoals = db.raw.prepare(
+            "SELECT id FROM goals WHERE status='active' AND lower(COALESCE(title,'')) LIKE 'autonomous value-creation cycle%'",
+          ).all() as Array<{ id: string }>;
+          for (const legacy of legacyGoals) {
+            const ts = new Date().toISOString();
+            db.raw.prepare(
+              "UPDATE task_graph SET status='cancelled', assigned_to=NULL, completed_at=COALESCE(completed_at,?) WHERE goal_id=? AND status IN ('pending','assigned','running')",
+            ).run(ts, legacy.id);
+            db.raw.prepare(
+              "UPDATE goals SET status='paused' WHERE id=? AND status='active'",
+            ).run(legacy.id);
+          }
+        } catch (error) {
+          logger.warn("[AUTONOMY] Legacy revenue migration skipped", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
       if (
         pendingInput?.source !== "creator" &&
         !db.getKV("creator_task_active") &&
@@ -872,28 +894,30 @@ export async function runAgentLoop(
         isAutonomousCycleDue(db)
       ) {
         try {
+          const offerPriceCents = Math.max(50_000, Number(process.env.RITTY_OFFER_PRICE_CENTS || "150000"));
           const goalId = insertGoal(db.raw, {
-            title: "Autonomous value-creation cycle",
+            title: "Revenue acquisition cycle",
             description:
-              "Continuously identify one legitimate, low-cost opportunity to create verifiable value. " +
-              "Research a real need or market opportunity using available tools, choose a concrete non-transactional task, " +
-              "produce a useful digital deliverable or improvement in /root/workspace, validate the result, and record what " +
-              "was achieved and what the next safe step should be. Do not send sales messages or external outreach without creator approval. " +
-              "Do not initiate transfers, trades, wallet actions, crypto transactions, currency conversion, payments, purchases, " +
-              "paid deployments, or binding contracts. Prefer work that can later be offered for voluntary payment after approval.",
+              "Run one concrete revenue-acquisition cycle for legitimate digital services. " +
+              "Use revenue_autopilot_cycle to discover public business prospects, research their public websites, qualify one opportunity, " +
+              "and generate a proposal under /root/.automaton/revenue/. Use revenue_pipeline and revenue_next_action to inspect durable progress. " +
+              "The goal is to create a real, verifiable sales opportunity for a website/digital-presence service. " +
+              "Do not send unsolicited outreach automatically; prepare the best next action for creator review. " +
+              "Never perform transfers, trades, wallet operations, crypto transactions, currency conversion, payments, purchases, paid deployments, " +
+              "or other real financial operations. Never fabricate a prospect, contact, result, sale, or revenue event.",
             strategy:
-              "Self-directed operation: research -> select opportunity -> create/implement -> validate -> document -> repeat. " +
-              "Prioritize concrete output over status checks and never wait merely because the creator is silent.",
-            expectedRevenueCents: 0,
+              "Research public market -> qualify one prospect -> create a concrete offer -> persist evidence -> await creator approval. " +
+              "One cycle should produce one tangible sales asset and then stop rather than burning inference quota.",
+            expectedRevenueCents: offerPriceCents,
           });
           db.setKV("autonomy.last_seeded_at", new Date().toISOString());
-          logger.info("[AUTONOMY] Seeded self-directed value-creation goal.", {
+          logger.info("[REVENUE] Seeded revenue acquisition goal.", {
             goalId,
             nextEligibleInMs: getAutonomousCycleIntervalMs(),
           });
         } catch (error) {
           logger.warn(
-            `[AUTONOMY] Self-directed goal seed skipped: ${error instanceof Error ? error.message : String(error)}`,
+            `[REVENUE] Revenue goal seed skipped: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       }
@@ -918,7 +942,11 @@ export async function runAgentLoop(
         // available, buy credits NOW — before attempting inference.
         // This prevents the agent from dying mid-loop while waiting for
         // the heartbeat to fire. Uses a 60s cooldown to avoid hammering.
-        if ((tier === "critical" || tier === "low_compute") && financial.usdcBalance >= 5) {
+        if (
+          process.env.RITTY_ALLOW_FINANCIAL_OPS === "true" &&
+          (tier === "critical" || tier === "low_compute") &&
+          financial.usdcBalance >= 5
+        ) {
           const INLINE_TOPUP_COOLDOWN_MS = 60_000;
           const lastInlineTopup = db.getKV("last_inline_topup_attempt");
           const cooldownExpired = !lastInlineTopup ||
@@ -1206,7 +1234,10 @@ export async function runAgentLoop(
              FROM task_graph t
              JOIN goals g ON g.id = t.goal_id
              WHERE g.status = 'active'
-               AND lower(COALESCE(g.title, '')) LIKE 'autonomous value-creation cycle%'
+               AND (
+                 lower(COALESCE(g.title, '')) LIKE 'autonomous value-creation cycle%'
+                 OR lower(COALESCE(g.title, '')) LIKE 'revenue acquisition cycle%'
+               )
                AND t.assigned_to LIKE 'local://%'
                AND t.status IN ('assigned', 'running')
              LIMIT 1`,
@@ -1661,8 +1692,15 @@ export async function runAgentLoop(
       // Prevents runaway loops where mutating tools (exec, write_file)
       // defeat idle detection indefinitely.
       cycleTurnCount++;
-      if (running && cycleTurnCount >= maxCycleTurns) {
-        log(config, `[CYCLE LIMIT] ${cycleTurnCount} turns reached (max: ${maxCycleTurns}). Forcing sleep.`);
+      if (
+        running &&
+        currentInput?.source !== "creator" &&
+        (
+          cycleTurnCount >= maxAutonomousCycleTurns ||
+          cycleTurnCount >= maxCycleTurns
+        )
+      ) {
+        log(config, `[CYCLE LIMIT] ${cycleTurnCount} autonomous turns reached (max: ${Math.min(maxCycleTurns, maxAutonomousCycleTurns)}). Forcing sleep.`);
         db.setKV("sleep_until", new Date(Date.now() + 120_000).toISOString());
         db.setAgentState("sleeping");
         onStateChange?.("sleeping");
