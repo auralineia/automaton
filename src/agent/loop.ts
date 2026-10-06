@@ -822,7 +822,26 @@ export async function runAgentLoop(
       const creatorWaiting = !!db.raw.prepare(
         "SELECT 1 FROM inbox_messages WHERE status = 'received' AND from_address = 'dashboard://creator' LIMIT 1",
       ).get();
-      const creatorTaskActive = !!db.getKV("creator_task_active");
+      const creatorTaskKV = db.getKV("creator_task_active");
+      const persistedCreatorWorkId = db.getKV("creator_work_id");
+      const persistedCreatorWorkRow = persistedCreatorWorkId
+        ? db.raw.prepare(
+            "SELECT id,title,description,type,status FROM work_items WHERE id=? LIMIT 1",
+          ).get(persistedCreatorWorkId) as {
+            id?: string;
+            title?: string;
+            description?: string;
+            type?: string;
+            status?: string;
+          } | undefined
+        : undefined;
+      const creatorWorkIsActive = Boolean(
+        persistedCreatorWorkRow &&
+        persistedCreatorWorkRow.type === "creator-request" &&
+        persistedCreatorWorkRow.status !== "completed" &&
+        persistedCreatorWorkRow.status !== "failed",
+      );
+      const creatorTaskActive = Boolean(creatorTaskKV || creatorWorkIsActive);
 
       if (
         (creatorWaiting || creatorTaskActive) &&
@@ -1106,8 +1125,13 @@ export async function runAgentLoop(
       if (creatorExecutionRequested) {
         const creatorRequest =
           pendingInput?.content ||
-          db.getKV("creator_task_active") ||
-          "Continue the active creator task from the durable work state.";
+          creatorTaskKV ||
+          (creatorWorkIsActive
+            ? "Continue the active creator work \"" +
+              (persistedCreatorWorkRow?.title || "current work") +
+              "\". " +
+              (persistedCreatorWorkRow?.description || "Complete the durable creator deliverable and verify it.")
+            : "Continue the active creator task from the durable work state.");
 
         messages = [
           {
@@ -1373,31 +1397,10 @@ export async function runAgentLoop(
         });
       }
 
-      // Creator-command override: the dashboard is an explicit instruction
-      // from the owner and must be acted on in the current turn.
-      if (pendingInput?.source === "creator" || creatorWaiting || creatorTaskActive) {
-        messages.push({
-          role: "system",
-          content:
-            "CREATOR COMMAND — HIGHEST PRIORITY: The user/creator has just sent the task " +
-            "shown in the current input. Execute that task NOW using the available tools. " +
-            "Do NOT call check_credits, orchestrator_status, list_goals, get_plan, or create_goal " +
-            "as a preliminary step. Do NOT sleep. Do NOT defer the task to a background goal. " +
-            "Do NOT merely describe what you would do. Start the concrete implementation immediately. " +
-            "Use as many tool calls as needed within the normal per-turn limit, then continue on " +
-            "subsequent turns until the requested work is actually completed and verified. " +
-            "Never perform financial transfers or wallet operations for this creator task. " +
-            "The runtime root package.json, config.json, wallet.json, state database, SOUL.md, " +
-            "policy/guard files, and other protected runtime files are read-only. NEVER attempt to write, " +
-            "replace, or install dependencies through those files. For coding tasks, use the existing " +
-            "Node.js runtime and built-in modules are available whenever possible. The sovereign sandbox home is /root. " +
-            "Do NOT use /home/ritty or /home/agent. For durable work, the workspacePath returned by work_create/work_status is the ONLY source of truth: create and modify application files there. " +
-            "Do not use /root/workspace as a substitute. Verify using work_test or exec inside that returned workspace. " +
-            "For small deterministic deliverables, prefer one work_execute call containing all required files, a real validation command, artifact paths, and a completion summary. " +
-            "For larger work, use the durable workflow: work_create only if no active work exists, then work_status/work_resume, edit files, work_test, work_checkpoint/work_artifact, and work_complete. " +
-            "Once work_create succeeds, NEVER call work_create again for the same task. Use the returned workspacePath as the source of truth. Do not waste turns on pwd, ls, git_status, git_diff, or environment inspection. Do not stop at a plan or explanation.",
-        });
-      }
+      // Creator-specific instructions are already placed in the dedicated
+      // creator system message above. Do not append another system turn after the
+      // user request: Gemini's OpenAI-compatible endpoint requires a valid message
+      // sequence and trailing system instructions were causing 400 errors.
 
       // Capture input before clearing
       const currentInput = pendingInput;
