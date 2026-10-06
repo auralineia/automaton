@@ -1546,13 +1546,47 @@ export async function runAgentLoop(
       // sovereign selection can pin Groq for 120s even when the direct
       // inference client is configured to prefer Gemini. Creator work must be
       // responsive and must not inherit autonomous routing state.
-      const directCreatorResponse = isCreatorExecution
-        ? await inference.chat(messages, {
-            model: process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.6-flash",
-            maxTokens: 7000,
-            tools: inferenceTools,
-          })
-        : null;
+      let directCreatorResponse: any = null;
+      if (isCreatorExecution) {
+        const creatorModels = Array.from(
+          new Set([
+            process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.5-flash-lite",
+            "gemini-3.6-flash",
+            "gemini-3.1-flash-lite",
+          ]),
+        );
+
+        let lastCreatorInferenceError: unknown = null;
+
+        for (const creatorModel of creatorModels) {
+          try {
+            log(config, "[CREATOR] Inference model: " + creatorModel);
+            directCreatorResponse = await inference.chat(messages, {
+              model: creatorModel,
+              maxTokens: 7000,
+              tools: inferenceTools,
+            });
+            break;
+          } catch (error) {
+            lastCreatorInferenceError = error;
+            const errorText = error instanceof Error ? error.message : String(error);
+            const retryable =
+              /\\b(?:429|500|502|503|504)\\b/i.test(errorText) ||
+              /UNAVAILABLE|high demand|temporarily unavailable|rate limit|resource exhausted/i.test(errorText);
+
+            if (!retryable) throw error;
+
+            logger.warn("[CREATOR] Provider/model temporarily unavailable; trying next model.", {
+              model: creatorModel,
+              error: errorText.slice(0, 240),
+            });
+          }
+        }
+
+        if (!directCreatorResponse && lastCreatorInferenceError) {
+          throw lastCreatorInferenceError;
+        }
+      }
 
       const routerResult = directCreatorResponse
         ? {
