@@ -119,7 +119,7 @@ async function searchDuckDuckGo(query: string, limit = 6): Promise<Array<{ title
     const response = await fetch(searchUrl, { signal: controller.signal, headers: { "user-agent": "Mozilla/5.0 RITTY/1.0", accept: "text/html" } });
     const html = await response.text();
     const results: Array<{ title: string; url: string; snippet: string }> = [];
-    const rx = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\\s\\S]*?)<\\/a>/gi;
+    const rx = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
     let match: RegExpExecArray | null;
     while ((match = rx.exec(html)) && results.length < limit) {
       let href = match[1];
