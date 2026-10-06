@@ -68,9 +68,9 @@ function decodeHtml(input: string): string {
   return input
     .replace(/&amp;/g, "&").replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/<script[\\s\\S]*?<\\/script>/gi, " ")
-    .replace(/<style[\\s\\S]*?<\\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ").replace(/\\s+/g, " ").trim();
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function hostnameIsBlocked(hostname: string): boolean {
@@ -106,7 +106,7 @@ async function fetchPublicText(rawUrl: string): Promise<{ url: string; status: n
       headers: { "user-agent": "RITTY-Revenue-Research/1.0", accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1" },
     });
     const body = (await response.text()).slice(0, 700_000);
-    const titleMatch = body.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i);
+    const titleMatch = body.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     return { url: response.url || url.toString(), status: response.status, title: decodeHtml(titleMatch?.[1] || "").slice(0, 200), text: decodeHtml(body).slice(0, 16_000) };
   } finally { clearTimeout(timer); }
 }
@@ -119,7 +119,7 @@ async function searchDuckDuckGo(query: string, limit = 6): Promise<Array<{ title
     const response = await fetch(searchUrl, { signal: controller.signal, headers: { "user-agent": "Mozilla/5.0 RITTY/1.0", accept: "text/html" } });
     const html = await response.text();
     const results: Array<{ title: string; url: string; snippet: string }> = [];
-    const rx = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\\s\\S]*?)<\\/a>[\\s\\S]*?<a[^>]+class="result__snippet"[^>]*>([\\s\\S]*?)<\\/a>/gi;
+    const rx = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\\s\\S]*?)<\\/a>/gi;
     let match: RegExpExecArray | null;
     while ((match = rx.exec(html)) && results.length < limit) {
       let href = match[1];
@@ -128,7 +128,7 @@ async function searchDuckDuckGo(query: string, limit = 6): Promise<Array<{ title
         const target = parsed.searchParams.get("uddg");
         if (target) href = decodeURIComponent(target);
       } catch {}
-      if (!/^https?:\\/\\//i.test(href)) continue;
+      if (!/^https?:\/\//i.test(href)) continue;
       results.push({ title: decodeHtml(match[2]).slice(0, 220), url: href, snippet: decodeHtml(match[3]).slice(0, 420) });
     }
     return results;
@@ -140,12 +140,12 @@ function heuristicScore(text: string, url: string): { score: number; reasons: st
   let score = 30;
   const reasons: string[] = [];
   if (url.includes(".com.br")) { score += 10; reasons.push("domínio brasileiro"); }
-  if (/whatsapp|wa\\.me/.test(lower)) { score += 18; reasons.push("WhatsApp público"); }
+  if (/whatsapp|wa\.me/.test(lower)) { score += 18; reasons.push("WhatsApp público"); }
   if (/contato|contact|telefone|phone/.test(lower)) { score += 10; reasons.push("canal de contato detectado"); }
   if (/instagram|facebook|tiktok/.test(lower)) { score += 6; reasons.push("rede social mencionada"); }
   if (/site em construção|under construction|coming soon|em breve/.test(lower)) { score += 16; reasons.push("presença digital incompleta"); }
-  if (/©\\s*20(1[0-9]|2[0-4])/.test(lower)) { score += 8; reasons.push("sinal de site antigo"); }
-  if (/http:\\/\\//.test(lower) && !/https:\\/\\//.test(lower)) { score += 6; reasons.push("site sem HTTPS no conteúdo"); }
+  if (/©\s*20(1[0-9]|2[0-4])/.test(lower)) { score += 8; reasons.push("sinal de site antigo"); }
+  if (/http:\/\//.test(lower) && !/https:\/\//.test(lower)) { score += 6; reasons.push("site sem HTTPS no conteúdo"); }
   return { score: Math.min(100, score), reasons };
 }
 
@@ -226,7 +226,7 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
     "Revisão humana antes de qualquer contato externo. Nenhuma mensagem foi enviada automaticamente.",
     "",
     `Gerado pelo RITTY em ${now()}`,
-  ].join("\\n");
+  ].join("\n");
   fs.writeFileSync(proposalPath, proposal, "utf8");
 
   db.raw.prepare("INSERT INTO revenue_offers (id,lead_id,title,price_cents,status,proposal_path,evidence,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)").run(
@@ -249,7 +249,7 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
     `Proposal: ${proposalPath}`,
     "External outreach: NOT SENT (creator approval required).",
     "Financial movement: NOT PERFORMED.",
-  ].join("\\n");
+  ].join("\n");
 }
 
 export function revenuePipeline(db: AutomatonDatabase): string {
