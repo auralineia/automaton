@@ -1,7 +1,8 @@
 import http from "node:http";
 import fs from "node:fs";
+import path from "node:path";
 import type { AutomatonConfig, AutomatonDatabase } from "../types.js";
-import { listWorks, ensureWorkSchema, getWorkArtifacts, getWorkTests } from "../orchestration/work-engine.js";
+import { listWorks, ensureWorkSchema, getWork, getWorkArtifacts, getWorkTests } from "../orchestration/work-engine.js";
 
 const DASHBOARD_HTML = String.raw`<!doctype html>
 <html lang="pt-BR">
@@ -406,6 +407,66 @@ export function startDashboardServer(options: { db: AutomatonDatabase; config: A
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:");
+
+    if (pathname.startsWith("/preview/")) {
+      const parts = pathname.split("/").filter(Boolean);
+      const workId = parts[1] || "";
+      const relativePath = parts.slice(2).join("/") || "index.html";
+
+      if (!/^[A-Za-z0-9_-]{8,120}$/.test(workId)) {
+        res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+        res.end("invalid_preview_id");
+        return;
+      }
+
+      try {
+        const work = getWork(db, workId);
+        if (!work || !["completed", "publish_pending_approval"].includes(work.status)) {
+          res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+          res.end("preview_not_found");
+          return;
+        }
+
+        const workspaceRoot = path.resolve(work.workspacePath);
+        const requested = decodeURIComponent(relativePath);
+        const filePath = path.resolve(workspaceRoot, requested);
+
+        if (filePath !== workspaceRoot && !filePath.startsWith(workspaceRoot + path.sep)) {
+          res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+          res.end("preview_forbidden");
+          return;
+        }
+
+        const stat = fs.statSync(filePath);
+        if (!stat.isFile()) throw new Error("not a file");
+
+        const ext = path.extname(filePath).toLowerCase();
+        const contentTypes: Record<string, string> = {
+          ".html": "text/html; charset=utf-8",
+          ".css": "text/css; charset=utf-8",
+          ".js": "text/javascript; charset=utf-8",
+          ".json": "application/json; charset=utf-8",
+          ".svg": "image/svg+xml",
+          ".png": "image/png",
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".webp": "image/webp",
+          ".ico": "image/x-icon",
+          ".txt": "text/plain; charset=utf-8",
+          ".pdf": "application/pdf",
+        };
+
+        res.writeHead(200, {
+          "Content-Type": contentTypes[ext] || "application/octet-stream",
+          "Cache-Control": "no-store, max-age=0",
+        });
+        fs.createReadStream(filePath).pipe(res);
+      } catch {
+        res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+        res.end("preview_file_not_found");
+      }
+      return;
+    }
 
     if (pathname === "/" || pathname === "/dashboard") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
