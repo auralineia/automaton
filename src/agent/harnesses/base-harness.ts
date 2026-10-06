@@ -2,6 +2,7 @@ import { createLogger } from "../../observability/logger.js";
 import type { ChatMessage, InferenceToolCall } from "../../types.js";
 import type { TaskNode, TaskResult } from "../../orchestration/task-graph.js";
 import { LoopDetector } from "../loop-detector.js";
+import { createWorkHarnessTools } from "./work-tools.js";
 import type {
   AgentHarness,
   HarnessContext,
@@ -95,7 +96,7 @@ export abstract class BaseHarness implements AgentHarness {
   async execute(): Promise<TaskResult> {
     this.context.budget.startedAt = Date.now();
 
-    const tools = this.getToolDefs();
+    const tools = [...this.getToolDefs(), ...createWorkHarnessTools(this.context)];
     const toolDefs = tools.map((tool) => ({
       type: "function" as const,
       function: {
