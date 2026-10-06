@@ -3675,7 +3675,7 @@ export async function executeTool(
   // Dispatch still resolves against the complete original tool registry, so
   // no underlying capability is removed.
   if (process.env.RITTY_MODE === "sovereign" && toolName === "invoke_tool") {
-    const targetName = typeof args.tool_name === "string" ? args.tool_name : "";
+    let targetName = typeof args.tool_name === "string" ? args.tool_name : "";
     const rawTargetArgs = args.arguments;
     let targetArgs: Record<string, unknown> = {};
     if (
