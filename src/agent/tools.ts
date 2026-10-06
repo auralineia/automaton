@@ -829,17 +829,30 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         const { createWork, startWork, getWork, ensureWorkSchema } = await import("../orchestration/work-engine.js");
         ensureWorkSchema(ctx.db);
 
-        // Creator work often arrives without a goal id. Reuse the latest
-        // unfinished creator work instead of creating duplicate jobs every turn.
+        // Creator work must stay isolated from autonomous work. Reuse only
+        // the explicit creator_work_id; never select an arbitrary unfinished job.
         const requestedGoal = typeof args.goal_id === "string" ? args.goal_id : undefined;
         let workId: string | undefined = requestedGoal
           ? (ctx.db.raw.prepare("SELECT id FROM work_items WHERE goal_id=? ORDER BY updated_at DESC LIMIT 1").get(requestedGoal) as { id?: string } | undefined)?.id
           : undefined;
 
         if (!workId && ctx.inputSource === "creator") {
-          workId = (ctx.db.raw.prepare(
-            "SELECT id FROM work_items WHERE status NOT IN ('completed','failed') ORDER BY updated_at DESC LIMIT 1",
-          ).get() as { id?: string } | undefined)?.id;
+          const creatorId = ctx.db.getKV("creator_work_id");
+          if (creatorId) {
+            const candidate = getWork(ctx.db, creatorId);
+            if (
+              candidate &&
+              candidate.type === "creator-request" &&
+              !candidate.goalId &&
+              candidate.status !== "completed" &&
+              candidate.status !== "failed"
+            ) {
+              workId = candidate.id;
+            } else {
+              ctx.db.deleteKV("creator_work_id");
+              ctx.db.deleteKV("creator_work_workspace");
+            }
+          }
         }
 
         if (workId) {
@@ -871,7 +884,9 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         const work = createWork(ctx.db, {
           title: String(args.title || "Untitled work"),
           description: String(args.description || "Complete the requested deliverable and verify it."),
-          type: typeof args.type === "string" ? args.type : undefined,
+          type: ctx.inputSource === "creator"
+            ? "creator-request"
+            : (typeof args.type === "string" ? args.type : undefined),
           goalId: requestedGoal,
           repoPath: typeof args.repo_path === "string" ? args.repo_path : undefined,
           customer: typeof args.customer === "string" ? args.customer : undefined,
@@ -920,7 +935,7 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
           ? args.work_id.trim()
           : ctx.db.getKV("creator_work_id") || "";
 
-        if (!workId) {
+        if (!workId && ctx.inputSource !== "creator") {
           workId = (ctx.db.raw.prepare(
             "SELECT id FROM work_items WHERE status NOT IN ('completed','failed') ORDER BY updated_at DESC LIMIT 1",
           ).get() as { id?: string } | undefined)?.id || "";
@@ -930,7 +945,7 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
           const work = createWork(ctx.db, {
             title: typeof args.title === "string" ? args.title : "Creator work",
             description: typeof args.description === "string" ? args.description : "Complete the requested deliverable.",
-            type: "digital-work",
+            type: ctx.inputSource === "creator" ? "creator-request" : "digital-work",
             successCriteria: "Files written, validation passed, artifacts registered, work completed.",
           });
           workId = work.id;
@@ -939,7 +954,7 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         let work = getWork(ctx.db, workId);
         if (!work) {
           workId = ctx.db.getKV("creator_work_id") || "";
-          if (!workId) {
+          if (!workId && ctx.inputSource !== "creator") {
             workId = (ctx.db.raw.prepare(
               "SELECT id FROM work_items WHERE status NOT IN ('completed','failed') ORDER BY updated_at DESC LIMIT 1",
             ).get() as { id?: string } | undefined)?.id || "";
@@ -1001,12 +1016,24 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         const { getWork, startWork, ensureWorkSchema } = await import("../orchestration/work-engine.js");
         ensureWorkSchema(ctx.db);
         let id = typeof args.work_id === "string" && args.work_id.trim() ? args.work_id.trim() : "";
-        if (!id) {
+        if (!id && ctx.inputSource === "creator") {
+          const creatorId = ctx.db.getKV("creator_work_id");
+          if (creatorId) {
+            const candidate = getWork(ctx.db, creatorId);
+            if (candidate && candidate.type === "creator-request" && candidate.status !== "completed" && candidate.status !== "failed") {
+              id = candidate.id;
+            } else {
+              ctx.db.deleteKV("creator_work_id");
+              ctx.db.deleteKV("creator_work_workspace");
+            }
+          }
+        }
+        if (!id && ctx.inputSource !== "creator") {
           id = (ctx.db.raw.prepare(
             "SELECT id FROM work_items WHERE status NOT IN ('completed','failed') ORDER BY updated_at DESC LIMIT 1",
           ).get() as { id?: string } | undefined)?.id || "";
         }
-        if (!id) return "No unfinished work exists. Use work_create now.";
+        if (!id) return "No creator work exists yet. Use work_create now.";
         let work = getWork(ctx.db, id);
         if (work && ctx.inputSource === "creator") {
           if (work.status === "interrupted" || work.status === "paused" || work.status === "blocked") {
