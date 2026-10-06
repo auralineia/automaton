@@ -5,7 +5,6 @@
  * Each worker executes through a harness chosen by role via HarnessRegistry.
  */
 
-import path from "node:path";
 import { ulid } from "ulid";
 import { createLogger } from "../observability/logger.js";
 import type { HarnessContext, WorkerInferenceClient } from "../agent/harness-types.js";
