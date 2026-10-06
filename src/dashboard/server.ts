@@ -406,6 +406,7 @@ export function startDashboardServer(options: { db: AutomatonDatabase; config: A
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     const pathname = url.pathname;
+    if (pathname === "/revenue" || pathname === "/api/revenue" || pathname.startsWith("/api/revenue/") || pathname === "/webhooks/stripe" || pathname === "/revenue/success" || pathname === "/revenue/cancelled") return void handleRevenueRequest(req, res, db, url);
 
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "no-referrer");
