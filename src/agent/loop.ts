@@ -1550,9 +1550,12 @@ export async function runAgentLoop(
       if (isCreatorExecution) {
         const creatorModels = Array.from(
           new Set([
-            process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.5-flash-lite",
+            process.env.RITTY_CREATOR_PRIMARY_MODEL || "gemini-3.8-flash",
+            "gemini-3.7-flash",
             "gemini-3.6-flash",
+            "gemini-3.5-flash-lite",
             "gemini-3.1-flash-lite",
+            "openai/gpt-oss-20b",
           ]),
         );
 
@@ -1571,7 +1574,7 @@ export async function runAgentLoop(
             lastCreatorInferenceError = error;
             const errorText = error instanceof Error ? error.message : String(error);
             const retryable =
-              /\\b(?:429|500|502|503|504)\\b/i.test(errorText) ||
+              /\b(?:429|500|502|503|504)\b/i.test(errorText) ||
               /UNAVAILABLE|high demand|temporarily unavailable|rate limit|resource exhausted/i.test(errorText);
 
             if (!retryable) throw error;
