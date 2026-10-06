@@ -456,8 +456,9 @@ export function startDashboardServer(options: { db: AutomatonDatabase; config: A
     if (pathname === "/api/wake" && req.method === "POST") {
       try {
         const backoff = db.getKV("inference_backoff_until");
+        const forceWakeForTest = process.env.RITTY_TEST_FORCE_WAKE === "true";
         const ts = backoff ? Date.parse(backoff) : NaN;
-        if (Number.isFinite(ts) && ts > Date.now()) {
+        if (!forceWakeForTest && Number.isFinite(ts) && ts > Date.now()) {
           res.writeHead(409, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
           res.end(JSON.stringify({ ok: false, message: "Backoff ainda ativo até " + backoff + ". O runtime não será forçado a consumir quota." }));
           return;
