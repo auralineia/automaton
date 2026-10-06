@@ -1495,7 +1495,7 @@ export async function runAgentLoop(
         const CREATOR_MUTATING_TOOLS = new Set([
           "exec", "write_file", "edit_own_file", "git_commit", "git_push",
           "git_pull", "git_clone", "git_branch",
-          "work_create", "work_start", "work_checkpoint", "work_artifact", "work_test", "work_complete",
+          "work_create", "work_start", "work_checkpoint", "work_artifact", "work_test", "work_publish", "work_complete",
         ]);
         if (turn.toolCalls.some((tc) => CREATOR_MUTATING_TOOLS.has(getObservedToolName(tc)) && !tc.error)) {
           db.setKV("creator_task_progress", "1");
