@@ -429,6 +429,112 @@ export function getWorkTests(db: AutomatonDatabase | import("better-sqlite3").Da
   ).all(workId) as Array<Record<string, unknown>>;
 }
 
+export async function executeWorkBundle(
+  db: AutomatonDatabase | import("better-sqlite3").Database,
+  workId: string,
+  input: {
+    files: Array<{ path: string; content: string }>;
+    testCommand: string;
+    artifacts?: string[];
+    summary?: string;
+    cwd?: string;
+  },
+  runner?: ConwayClient,
+): Promise<{
+  workId: string;
+  workspacePath: string;
+  test: string;
+  artifacts: string[];
+  completed: boolean;
+  summary: string;
+}> {
+  ensureWorkSchema(db);
+  const work = getWork(db, workId);
+  if (!work) throw new Error(`Work not found: ${workId}`);
+
+  let active = work;
+  if (active.status !== "in_progress") {
+    active = startWork(db, active.id, "Work bundle execution started/resumed");
+  }
+
+  const workspace = path.resolve(active.workspacePath);
+  for (const file of input.files) {
+    const relative = String(file.path || "").replace(/^\/+/, "");
+    const destination = path.resolve(workspace, relative);
+    if (destination !== workspace && !destination.startsWith(workspace + path.sep)) {
+      throw new Error(`Artifact/file path escapes work workspace: ${file.path}`);
+    }
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, String(file.content ?? ""), "utf8");
+  }
+
+  checkpointWork(
+    db,
+    active.id,
+    "implementation",
+    "in_progress",
+    `Wrote ${input.files.length} file(s) into the durable workspace.`,
+    { files: input.files.map((f) => f.path) },
+  );
+
+  const test = await runTrackedTest(
+    db,
+    active.id,
+    input.testCommand,
+    path.resolve(input.cwd || workspace),
+    120000,
+    runner,
+  );
+
+  const testPassed = test.includes("status=passed");
+  if (!testPassed) {
+    const summary = input.summary || "Validation failed; work remains blocked for diagnosis/correction.";
+    checkpointWork(db, active.id, "validation", "blocked", summary, { test });
+    return {
+      workId: active.id,
+      workspacePath: workspace,
+      test,
+      artifacts: [],
+      completed: false,
+      summary,
+    };
+  }
+
+  const recordedArtifacts = [];
+  for (const artifact of input.artifacts || []) {
+    const relative = String(artifact).replace(/^\/+/, "");
+    const destination = path.resolve(workspace, relative);
+    if (destination !== workspace && !destination.startsWith(workspace + path.sep)) {
+      throw new Error(`Artifact path escapes work workspace: ${artifact}`);
+    }
+    if (!fs.existsSync(destination)) {
+      throw new Error(`Declared artifact does not exist: ${artifact}`);
+    }
+    recordWorkArtifact(db, active.id, destination, "deliverable", path.basename(destination));
+    recordedArtifacts.push(destination);
+  }
+
+  checkpointWork(
+    db,
+    active.id,
+    "delivery",
+    "in_progress",
+    `Validation passed and ${recordedArtifacts.length} artifact(s) registered.`,
+    { artifacts: recordedArtifacts },
+  );
+
+  const summary = input.summary || "Work implemented, validated, artifacts recorded, and completed.";
+  completeWork(db, active.id, true, summary);
+  return {
+    workId: active.id,
+    workspacePath: workspace,
+    test,
+    artifacts: recordedArtifacts,
+    completed: true,
+    summary,
+  };
+}
+
 export function getWorkResumeContext(db: AutomatonDatabase | import("better-sqlite3").Database, workId: string): string {
   ensureWorkSchema(db);
   const raw = rawOf(db);
