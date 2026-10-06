@@ -9,6 +9,11 @@ import type {
 } from "../harness-types.js";
 
 const logger = createLogger("harness.base");
+
+/** Provider quota/rate-limit errors should stop a worker immediately. */
+function isInferenceQuotaError(message: string): boolean {
+  return /\\b429\\b|rate limit|quota exceeded|resource_exhausted|tokens per day|tokens per minute|tpd/i.test(message);
+}
 const MAX_CONSECUTIVE_INFERENCE_ERRORS = 3;
 const MAX_TOOL_OUTPUT_LENGTH = 16_000;
 
@@ -126,6 +131,15 @@ export abstract class BaseHarness implements AgentHarness {
         logger.error(
           `[${this.id}] Inference error (${consecutiveInferenceErrors}/${MAX_CONSECUTIVE_INFERENCE_ERRORS}): ${message}`,
         );
+
+        // Quota/rate-limit failures are not transient task errors. Retrying them
+        // inside the same worker only burns time and can hammer the provider again.
+        // Bubble them up immediately so the orchestrator can put RITTY into a
+        // durable backoff instead of consuming the next available quota window.
+        if (isInferenceQuotaError(message)) {
+          throw new Error(`[INFERENCE_QUOTA] ${message}`);
+        }
+
         if (consecutiveInferenceErrors >= MAX_CONSECUTIVE_INFERENCE_ERRORS) {
           throw new Error(
             `${MAX_CONSECUTIVE_INFERENCE_ERRORS} consecutive inference failures. Last error: ${message}`,
