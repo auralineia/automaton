@@ -962,6 +962,10 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
           ctx.db.setKV("creator_work_workspace", work.workspacePath);
         }
 
+        if (ctx.inputSource === "creator") {
+          ctx.db.setKV("creator_bundle_attempted", "1");
+        }
+
         const result = await executeWorkBundle(
           ctx.db,
           work.id,
@@ -979,7 +983,10 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         if (ctx.inputSource === "creator") {
           ctx.db.setKV("creator_work_id", result.workId);
           ctx.db.setKV("creator_work_workspace", result.workspacePath);
-          if (result.completed) ctx.db.setKV("creator_work_status_seen", "1");
+          if (result.completed) {
+            ctx.db.setKV("creator_work_status_seen", "1");
+            ctx.db.deleteKV("creator_bundle_attempted");
+          }
         }
         return JSON.stringify(result, null, 2);
       },
