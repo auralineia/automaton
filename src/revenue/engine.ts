@@ -122,22 +122,50 @@ async function searchDuckDuckGo(query: string, limit = 6): Promise<Array<{ title
     });
     const html = await response.text();
     const results: Array<{ title: string; url: string; snippet: string }> = [];
-    const linkRx = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\\/a>/gis;
-    let match: RegExpExecArray | null;
-    while ((match = linkRx.exec(html)) && results.length < limit) {
-      let href = match[1];
+    const marker = 'class="result__a"';
+    let cursor = 0;
+
+    while (results.length < limit) {
+      const markerIndex = html.indexOf(marker, cursor);
+      if (markerIndex < 0) break;
+
+      const hrefToken = 'href="';
+      const hrefStart = html.lastIndexOf(hrefToken, markerIndex);
+      if (hrefStart < 0) {
+        cursor = markerIndex + marker.length;
+        continue;
+      }
+
+      const valueStart = hrefStart + hrefToken.length;
+      const valueEnd = html.indexOf('"', valueStart);
+      const titleStart = html.indexOf(">", markerIndex);
+      const titleEnd = titleStart >= 0 ? html.indexOf("</a>", titleStart + 1) : -1;
+
+      if (valueEnd < 0 || titleStart < 0 || titleEnd < 0) {
+        cursor = markerIndex + marker.length;
+        continue;
+      }
+
+      let href = html.slice(valueStart, valueEnd);
+      const rawTitle = html.slice(titleStart + 1, titleEnd);
+
       try {
         const parsed = new URL(href, "https://html.duckduckgo.com");
         const target = parsed.searchParams.get("uddg");
         if (target) href = decodeURIComponent(target);
       } catch {}
-      if (!/^https?:\\/\\//i.test(href)) continue;
-      results.push({
-        title: decodeHtml(match[2]).slice(0, 220),
-        url: href,
-        snippet: "",
-      });
+
+      if (/^https?:\/\//i.test(href)) {
+        results.push({
+          title: decodeHtml(rawTitle).slice(0, 220),
+          url: href,
+          snippet: "",
+        });
+      }
+
+      cursor = titleEnd + 4;
     }
+
     return results;
   } finally {
     clearTimeout(timer);
@@ -172,11 +200,11 @@ function ensureLead(db: AutomatonDatabase, lead: { name: string; website?: strin
 
 export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { niche?: string; location?: string; limit?: number; priceCents?: number } = {}): Promise<string> {
   ensureRevenueSchema(db);
-  const niche = options.niche || process.env.RITTY_REVENUE_NICHE || "empresas locais com site fraco ou desatualizado";
+  const niche = options.niche || process.env.RITTY_REVENUE_NICHE || "negócios locais";
   const location = options.location || process.env.RITTY_REVENUE_REGION || "Brasil";
   const limit = Math.max(3, Math.min(8, options.limit || 5));
   const priceCents = Number.isFinite(options.priceCents) && (options.priceCents || 0) > 0 ? Number(options.priceCents) : DEFAULT_PRICE_CENTS;
-  const query = `site:.com.br "${niche}" "${location}"`;
+  const query = `${niche} ${location} site:.com.br`;
   let searchResults: Array<{ title: string; url: string; snippet: string }> = [];
   try { searchResults = await searchDuckDuckGo(query, limit); }
   catch (error) { return `Revenue engine could not search public web: ${error instanceof Error ? error.message : String(error)}`; }
