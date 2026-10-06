@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { AutomatonConfig, AutomatonDatabase } from "../types.js";
 import { listWorks, ensureWorkSchema, getWork, getWorkArtifacts, getWorkTests } from "../orchestration/work-engine.js";
-import { ensureRevenueCommerceSchema, revenueMetrics, approveOutreach, sendApprovedOutreach, recordLeadResponse, approveCheckout, createStripeCheckout, fulfillPaidOrder, handleStripeWebhook, confirmStripeSuccess } from "../revenue/commerce.js";
+import { ensureRevenueCommerceSchema } from "../revenue/commerce.js";
 
 const DASHBOARD_HTML = String.raw`<!doctype html>
 <html lang="pt-BR">
