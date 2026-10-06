@@ -863,8 +863,31 @@ export async function runAgentLoop(
       const creatorWaiting = !!db.raw.prepare(
         "SELECT 1 FROM inbox_messages WHERE status = 'received' AND from_address = 'dashboard://creator' LIMIT 1",
       ).get();
-      const creatorTaskKV = db.getKV("creator_task_active");
-      const persistedCreatorWorkId = db.getKV("creator_work_id");
+      let creatorTaskKV = db.getKV("creator_task_active");
+      let persistedCreatorWorkId = db.getKV("creator_work_id");
+
+      // Durable creator priority: if a creator work survived a restart but its
+      // KV pointers were lost, restore them before any autonomous cycle runs.
+      if (!creatorTaskKV && !persistedCreatorWorkId) {
+        const recoveredCreator = db.raw.prepare(
+          "SELECT id,title,description,workspace_path FROM work_items WHERE type='creator-request' AND status NOT IN ('completed','failed') ORDER BY updated_at DESC LIMIT 1",
+        ).get() as {
+          id?: string;
+          title?: string;
+          description?: string;
+          workspace_path?: string;
+        } | undefined;
+
+        if (recoveredCreator?.id) {
+          persistedCreatorWorkId = recoveredCreator.id;
+          creatorTaskKV = recoveredCreator.description || recoveredCreator.title || "Continue the active creator work.";
+          db.setKV("creator_work_id", recoveredCreator.id);
+          db.setKV("creator_work_workspace", recoveredCreator.workspace_path || "");
+          db.setKV("creator_task_active", creatorTaskKV);
+          db.deleteKV("sleep_until");
+          log(config, "[CREATOR] Rehydrated unfinished creator work before autonomy.");
+        }
+      }
       const persistedCreatorWorkRow = persistedCreatorWorkId
         ? db.raw.prepare(
             "SELECT id,title,description,type,status FROM work_items WHERE id=? LIMIT 1",
@@ -1525,19 +1548,10 @@ export async function runAgentLoop(
               if (!creatorWorkActive) {
                 return new Set(["work_create", "work_execute"]).has(tool.name);
               }
-              if (!creatorBundleAttempted) {
-                // Once the exact creator work exists, force the model onto the
-                // atomic executor. Status/read turns were causing an endless
-                // "check status" loop because creator continuations deliberately
-                // do not replay autonomous conversation history.
-                return tool.name === "work_execute";
-              }
-              return (
-                creatorToolSet.has(tool.name) &&
-                !CREATOR_BLOCKED_TOOLS.has(tool.name) &&
-                !(creatorWorkActive && tool.name === "work_create") &&
-                !(creatorWorkStatusSeen && tool.name === "work_status")
-              );
+              // An unfinished creator deliverable has one priority: finish it.
+              // Do not let the model spend turns on status checks, revenue work,
+              // orchestration, or unrelated maintenance.
+              return tool.name === "work_execute";
             })
           : activeGoalExists
             ? tools.filter((tool) => !isIdleOnlyTool(tool.name) && tool.name !== "create_goal")
@@ -1981,9 +1995,21 @@ export async function runAgentLoop(
         // Tool-only turns still keep creator_task_active so multi-step implementation work
         // can continue on the next inference cycle.
         if (isCreatorExecution) {
-          db.deleteKV("creator_task_active");
-          db.deleteKV("creator_task_progress");
-          log(config, "[CREATOR] Task completed with final text response.");
+          const activeCreatorId = db.getKV("creator_work_id");
+          const activeCreatorWork = activeCreatorId
+            ? db.raw.prepare("SELECT status FROM work_items WHERE id=? LIMIT 1").get(activeCreatorId) as { status?: string } | undefined
+            : undefined;
+          if (activeCreatorWork?.status === "completed" || activeCreatorWork?.status === "failed") {
+            db.deleteKV("creator_work_id");
+            db.deleteKV("creator_work_workspace");
+            db.deleteKV("creator_work_status_seen");
+            db.deleteKV("creator_bundle_attempted");
+            db.deleteKV("creator_task_active");
+            db.deleteKV("creator_task_progress");
+            log(config, "[CREATOR] Final text response after durable work reached terminal state.");
+          } else {
+            log(config, "[CREATOR] Kept creator execution state; durable work is still unfinished.");
+          }
         }
         // Agent produced text without tool calls.
         // This is a natural pause point -- no work queued, sleep briefly.
