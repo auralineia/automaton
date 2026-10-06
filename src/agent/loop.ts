@@ -282,7 +282,7 @@ export async function runAgentLoop(
             // Sovereign mode runs workers locally in-process. Avoid spawning
             // remote Conway children that can remain marked alive after the
             // actual worker is gone.
-            if (process.env.RITTY_MODE === "sovereign") {
+            if (process.env.RITTY_MODE === "sovereign" && !creatorExecutionRequested) {
               try {
                 const spawned = initializedWorkerPool.spawn(task);
                 logger.info("[ORCHESTRATION] Spawned local sovereign worker", {
@@ -477,6 +477,43 @@ export async function runAgentLoop(
   // Creator tasks are recovered only from the explicit active-task KV.
   // Completed creator turns must never be replayed just because they were recent.
   // This prevents restart loops where the same historical command is executed forever.
+  const creatorInboxPending = Boolean(
+    db.raw.prepare(
+      "SELECT 1 FROM inbox_messages WHERE from_address = 'dashboard://creator' AND status IN ('received','in_progress') LIMIT 1",
+    ).get(),
+  );
+  const persistedCreatorWorkId = db.getKV("creator_work_id");
+  if (persistedCreatorWorkId) {
+    const persistedCreatorWork = db.raw.prepare(
+      "SELECT id,type,goal_id,status FROM work_items WHERE id=? LIMIT 1",
+    ).get(persistedCreatorWorkId) as {
+      id?: string;
+      type?: string;
+      goal_id?: string | null;
+      status?: string;
+    } | undefined;
+
+    const validPersistedCreatorWork = Boolean(
+      persistedCreatorWork &&
+      persistedCreatorWork.type === "creator-request" &&
+      !persistedCreatorWork.goal_id &&
+      persistedCreatorWork.status !== "completed" &&
+      persistedCreatorWork.status !== "failed",
+    );
+
+    if (!validPersistedCreatorWork) {
+      db.deleteKV("creator_work_id");
+      db.deleteKV("creator_work_workspace");
+      db.deleteKV("creator_work_status_seen");
+      db.deleteKV("creator_bundle_attempted");
+      if (!creatorInboxPending) {
+        db.deleteKV("creator_task_active");
+        db.deleteKV("creator_task_progress");
+        logger.info("[CREATOR] Cleared stale creator state that pointed to autonomous work.");
+      }
+    }
+  }
+
   if (db.getKV("creator_task_active")) {
     db.deleteKV("sleep_until");
     logger.info("[CREATOR] Preserved explicit in-flight creator task across restart.");
@@ -1216,7 +1253,7 @@ export async function runAgentLoop(
         }
       }
 
-      if (orchestrator && pendingInput?.source !== "creator") {
+      if (orchestrator && !creatorTaskActive && pendingInput?.source !== "creator") {
         const orchestratorTick = await orchestrator.tick();
         db.setKV("orchestrator.last_tick", JSON.stringify(orchestratorTick));
 
@@ -1306,7 +1343,7 @@ export async function runAgentLoop(
         }
       }
 
-      if (planModeController) {
+      if (planModeController && !creatorExecutionRequested) {
         try {
           const todoMd = generateTodoMd(db.raw);
           messages = injectTodoContext(messages, todoMd);
@@ -1439,9 +1476,12 @@ export async function runAgentLoop(
       const creatorWorkStatusSeen = db.getKV("creator_work_status_seen") === "1";
       const creatorBundleAttempted = db.getKV("creator_bundle_attempted") === "1";
       const inferenceToolSource =
-        currentInput?.source === "creator"
+        isCreatorExecution
           ? tools.filter((tool) => {
-              if (creatorWorkActive && !creatorBundleAttempted) {
+              if (!creatorWorkActive) {
+                return new Set(["work_create", "work_execute"]).has(tool.name);
+              }
+              if (!creatorBundleAttempted) {
                 return new Set(["work_execute", "work_status", "work_resume", "read_file"]).has(tool.name);
               }
               return (
