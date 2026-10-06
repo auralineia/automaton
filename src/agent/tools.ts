@@ -1195,7 +1195,28 @@ const form=document.getElementById("contact-form"), note=document.getElementById
             ctx.db.deleteKV("creator_bundle_attempted");
           }
         }
-        return JSON.stringify(result, null, 2);
+
+        const isWebsite =
+          (args.site && typeof args.site === "object") ||
+          bundleFiles.some((file) => String(file.path || "").toLowerCase() === "index.html");
+        const publicDomain =
+          String(process.env.RITTY_PUBLIC_URL || "").replace(/\/+$/, "") ||
+          (process.env.RAILWAY_PUBLIC_DOMAIN
+            ? "https://" + process.env.RAILWAY_PUBLIC_DOMAIN.replace(/\/+$/, "")
+            : "https://ritty-production.up.railway.app");
+        const previewUrl =
+          result.completed && isWebsite
+            ? publicDomain + "/preview/" + encodeURIComponent(result.workId) + "/"
+            : undefined;
+
+        return JSON.stringify(
+          {
+            ...result,
+            ...(previewUrl ? { previewUrl } : {}),
+          },
+          null,
+          2,
+        );
       },
     },
         {
