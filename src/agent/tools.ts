@@ -126,7 +126,7 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
     {
       name: "exec",
       description:
-        "Execute a shell command in your sandbox. Returns stdout, stderr, and exit code.",
+        "Execute a shell command in your sandbox. For an active creator work item, commands automatically run inside that work's workspace. Do NOT waste turns on pwd, ls, git_status, or environment inspection; create/modify files, run the requested test, record artifacts, and complete the work.",
       category: "vm",
       riskLevel: "caution",
       parameters: {
@@ -148,8 +148,16 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         const forbidden = isForbiddenCommand(command, ctx.identity.sandboxId);
         if (forbidden) return forbidden;
 
+        const workspace = ctx.inputSource === "creator"
+          ? ctx.db.getKV("creator_work_workspace")
+          : null;
+        const effectiveCommand =
+          workspace && workspace.trim()
+            ? `cd ${JSON.stringify(workspace)} && ${command}`
+            : command;
+
         const result = await ctx.conway.exec(
-          command,
+          effectiveCommand,
           (args.timeout as number) || 30000,
         );
         return `exit_code: ${result.exitCode}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`;
@@ -805,6 +813,10 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
             startWork(ctx.db, existing.id, "Creator task continued");
             existing = getWork(ctx.db, existing.id);
           }
+          if (existing && ctx.inputSource === "creator") {
+            ctx.db.setKV("creator_work_id", existing.id);
+            ctx.db.setKV("creator_work_workspace", existing.workspacePath);
+          }
           return JSON.stringify(existing, null, 2);
         }
 
@@ -819,6 +831,10 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         });
         // Do not require a second inference turn just to start the durable job.
         const started = startWork(ctx.db, work.id, "Creator task started");
+        if (ctx.inputSource === "creator") {
+          ctx.db.setKV("creator_work_id", started.id);
+          ctx.db.setKV("creator_work_workspace", started.workspacePath);
+        }
         return JSON.stringify(started, null, 2);
       },
     },
