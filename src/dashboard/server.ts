@@ -453,30 +453,11 @@ export function startDashboardServer(options: { db: AutomatonDatabase; config: A
       return;
     }
 
-    // TEMPORARY CONTROLLED E2E TEST ENDPOINT — remove after test.
-    if (pathname === "/api/test-work" && req.method === "GET") {
-      try {
-        const message = "Crie um pequeno projeto HTML no workspace: escreva os arquivos, execute uma verificacao/teste, corrija qualquer erro, registre um artefato e marque o trabalho como concluido. Nao publique e nao faca nenhuma operacao financeira, transferencia, trade ou movimentacao de carteira. Este e um teste controlado do Work Engine."; 
-        const id = requireUlid();
-        db.deleteKV("inference_backoff_until");
-        db.deleteKV("sleep_until");
-        db.raw.prepare("INSERT OR IGNORE INTO inbox_messages (id, from_address, to_address, content, received_at, status, retry_count, max_retries) VALUES (?, ?, ?, ?, ?, 'received', 0, 3)").run(id, "dashboard://creator", config.walletAddress, message, new Date().toISOString());
-        db.raw.prepare("INSERT INTO wake_events (source, reason, payload) VALUES (?, ?, ?)").run("dashboard", "controlled work-engine test", JSON.stringify({ messageId: id }));
-        db.setAgentState("waking");
-        res.writeHead(202, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-        res.end(JSON.stringify({ queued: true, id, test: "work-engine" }));
-      } catch {
-        res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ queued: false, error: "test_unavailable" }));
-      }
-      return;
-    }
-
     if (pathname === "/api/wake" && req.method === "POST") {
       try {
         const backoff = db.getKV("inference_backoff_until");
         const ts = backoff ? Date.parse(backoff) : NaN;
-        if (false && Number.isFinite(ts) && ts > Date.now()) {
+        if (Number.isFinite(ts) && ts > Date.now()) {
           res.writeHead(409, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
           res.end(JSON.stringify({ ok: false, message: "Backoff ainda ativo até " + backoff + ". O runtime não será forçado a consumir quota." }));
           return;
