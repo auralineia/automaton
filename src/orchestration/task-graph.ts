@@ -83,6 +83,10 @@ const TERMINAL_TASK_STATUSES = new Set<TaskStatus>([
   "cancelled",
 ]);
 
+function isInferenceQuotaError(message: string): boolean {
+  return /\\[INFERENCE_QUOTA\\]|\\b429\\b|rate limit|quota exceeded|resource_exhausted|tokens per day|tokens per minute|tpd/i.test(message);
+}
+
 export function createGoal(
   db: Database,
   title: string,
@@ -297,7 +301,8 @@ export function failTask(db: Database, taskId: string, error: string, shouldRetr
       duration: 0,
     };
 
-    const canRetry = shouldRetry && task.retryCount < task.maxRetries;
+    const quotaFailure = isInferenceQuotaError(error);
+    const canRetry = shouldRetry && !quotaFailure && task.retryCount < task.maxRetries;
     if (canRetry) {
       const nextStatus: TaskStatus = areDependenciesSatisfied(db, task.dependencies)
         ? "pending"
