@@ -23,6 +23,7 @@ import {
 } from "./heartbeat/config.js";
 import { consumeNextWakeEvent, insertWakeEvent } from "./state/database.js";
 import { runAgentLoop } from "./agent/loop.js";
+import { ensureWorkSchema, recoverInterruptedWorks } from "./orchestration/work-engine.js";
 import { ModelRegistry } from "./inference/registry.js";
 import { loadSkills } from "./skills/loader.js";
 import { ensureDefaultSkills } from "./skills/defaults.js";
@@ -292,6 +293,11 @@ async function run(): Promise<void> {
     process.env.RITTY_DB_PATH || config.dbPath || "~/.automaton/state.db",
   );
   const db = createDatabase(dbPath);
+  ensureWorkSchema(db);
+  const interruptedWorks = recoverInterruptedWorks(db);
+  if (interruptedWorks > 0) {
+    logger.warn(`[${new Date().toISOString()}] Recovered ${interruptedWorks} interrupted work item(s) for resume.`);
+  }
   db.setKV("runtime_last_boot", new Date().toISOString());
   db.setKV("runtime_db_path", dbPath);
   logger.info(
