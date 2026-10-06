@@ -4,6 +4,7 @@ import dns from "node:dns/promises";
 import net from "node:net";
 import { ulid } from "ulid";
 import type { AutomatonDatabase } from "../types.js";
+import { enrichLead, prepareOutreach } from "./commerce.js";
 
 const REVENUE_ROOT = process.env.RITTY_REVENUE_ROOT || "/root/.automaton/revenue";
 const DEFAULT_PRICE_CENTS = Number(process.env.RITTY_OFFER_PRICE_CENTS || 150000);
@@ -218,6 +219,7 @@ function heuristicScore(text: string, url: string): { score: number; reasons: st
   const reasons: string[] = [];
   if (url.includes(".com.br")) { score += 10; reasons.push("domínio brasileiro"); }
   if (/whatsapp|wa\.me/.test(lower)) { score += 18; reasons.push("WhatsApp público"); }
+  if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(text)) { score += 14; reasons.push("e-mail público"); }
   if (/contato|contact|telefone|phone/.test(lower)) { score += 10; reasons.push("canal de contato detectado"); }
   if (/instagram|facebook|tiktok/.test(lower)) { score += 6; reasons.push("rede social mencionada"); }
   if (/site em construção|under construction|coming soon|em breve/.test(lower)) { score += 16; reasons.push("presença digital incompleta"); }
@@ -258,7 +260,7 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
   }
 
   let researched = 0;
-  let best: { id: string; score: number; name: string; website: string; reasons: string[] } | null = null;
+  const candidates: Array<{ id: string; score: number; name: string; website: string; reasons: string[] }> = [];
   for (const id of candidateIds) {
     const row = db.raw.prepare("SELECT id,name,website,snippet FROM revenue_leads WHERE id=?").get(id) as { id: string; name: string; website: string | null; snippet: string | null } | undefined;
     if (!row?.website) continue;
@@ -278,13 +280,33 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
       const scored = heuristicScore(page.text + " " + (row.snippet || "") + " " + page.title, page.url);
       db.raw.prepare("UPDATE revenue_leads SET website=?,score=?,notes=?,status=?,updated_at=? WHERE id=?").run(page.url, scored.score, JSON.stringify({ title: page.title, reasons: scored.reasons, status: page.status }), "qualified", now(), id);
       researched++;
-      if (!best || scored.score > best.score) best = { id, score: scored.score, name: row.name, website: page.url, reasons: scored.reasons };
+      candidates.push({ id, score: scored.score, name: row.name, website: page.url, reasons: scored.reasons });
     } catch (error) {
       db.raw.prepare("UPDATE revenue_leads SET notes=?,status=?,updated_at=? WHERE id=?").run(JSON.stringify({ researchError: error instanceof Error ? error.message : String(error) }), "research_failed", now(), id);
     }
   }
 
-  if (!best) return `Revenue engine searched ${searchResults.length} public results but could not research a usable prospect.`;
+  if (!candidates.length) return `Revenue engine searched ${searchResults.length} public results but could not research a usable prospect.`;
+
+  candidates.sort((a, b) => b.score - a.score);
+  let best: { id: string; score: number; name: string; website: string; reasons: string[] } | null = null;
+  for (const candidate of candidates.slice(0, 3)) {
+    try {
+      await enrichLead(db, candidate.id);
+      const enriched = db.raw.prepare("SELECT id,name,website,email,phone,contact,contact_url FROM revenue_leads WHERE id=?").get(candidate.id) as any;
+      if (enriched && (enriched.email || enriched.phone || enriched.contact || enriched.contact_url)) {
+        best = {
+          id: candidate.id,
+          score: candidate.score,
+          name: enriched.name || candidate.name,
+          website: enriched.website || candidate.website,
+          reasons: candidate.reasons,
+        };
+        break;
+      }
+    } catch {}
+  }
+  if (!best) best = candidates[0];
 
   const offerId = ulid();
   const safeName = best.name.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 70) || best.id;
@@ -321,10 +343,12 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
     offerId, best.id, `Site profissional / ${best.name}`, priceCents, "draft", proposalPath,
     JSON.stringify({ score: best.score, reasons: best.reasons, researched }), now(), now(),
   );
-  db.raw.prepare("INSERT INTO revenue_actions (id,lead_id,action,status,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run(
-    ulid(), best.id, "review_and_contact_prospect", "pending_approval",
-    JSON.stringify({ offerId, proposalPath, priceCents }), now(), now(),
-  );
+  let outreach = "";
+  try {
+    outreach = await prepareOutreach(db, { leadId: best.id });
+  } catch (error) {
+    outreach = "Outreach preparation failed: " + (error instanceof Error ? error.message : String(error));
+  }
 
   return [
     "REVENUE CYCLE COMPLETE",
@@ -335,6 +359,8 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
     `Score: ${best.score}/100`,
     `Offer: R$ ${(priceCents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
     `Proposal: ${proposalPath}`,
+    "Outreach prepared: " + (outreach ? "YES" : "NO"),
+    outreach.slice(0, 1800),
     "External outreach: NOT SENT (creator approval required).",
     "Financial movement: NOT PERFORMED.",
   ].join("\n");
