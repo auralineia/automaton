@@ -1417,13 +1417,25 @@ export function revenueMetrics(db: AutomatonDatabase): string {
         .get() as any
     )?.c || 0,
   );
-  const costs = Number(
+  const manualCosts = Number(
     (
       raw
         .prepare("SELECT COALESCE(SUM(amount_cents),0) c FROM revenue_costs")
         .get() as any
     )?.c || 0,
   );
+
+  // Inference usage is already recorded by the runtime in inference_costs.
+  // Fold it into the revenue ledger view automatically so profit never
+  // depends on remembering to manually enter every model call.
+  const inferenceCosts = Number(
+    (
+      raw
+        .prepare("SELECT COALESCE(SUM(cost_cents),0) c FROM inference_costs")
+        .get() as any
+    )?.c || 0,
+  );
+  const costs = manualCosts + inferenceCosts;
 
   const replyRate = contacted > 0 ? responses / contacted : 0;
   const closeRate = proposals > 0 ? sales / proposals : 0;
@@ -1475,9 +1487,11 @@ export function revenueMetrics(db: AutomatonDatabase): string {
         netProfitBRL: Number(((last7Revenue - last7Costs) / 100).toFixed(2)),
       },
       costTracking: {
-        table: "revenue_costs",
-        automaticApiCost: false,
-        note: "Use revenue_record_cost to register API/operational spend until provider-level cost ingestion is connected.",
+        manualCostsBRL: manualCosts / 100,
+        inferenceCostsBRL: inferenceCosts / 100,
+        automaticApiCost: true,
+        sources: ["revenue_costs", "inference_costs"],
+        note: "Model/API inference costs are pulled automatically from the runtime cost ledger; other operational costs can still be recorded with revenue_record_cost.",
       },
     },
     null,
