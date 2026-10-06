@@ -1175,12 +1175,20 @@ const form=document.getElementById("contact-form"), note=document.getElementById
           ];
         }
 
+        const isGeneratedWebsite =
+          Boolean(args.site && typeof args.site === "object") ||
+          bundleFiles.some((file) => String(file.path || "").toLowerCase() === "index.html");
+        const resolvedTestCommand =
+          isGeneratedWebsite
+            ? "test -s index.html && test -s style.css && test -s script.js"
+            : String(args.test_command || "");
+
         const result = await executeWorkBundle(
           ctx.db,
           work.id,
           {
             files: bundleFiles,
-            testCommand: String(args.test_command || ""),
+            testCommand: resolvedTestCommand,
             artifacts: Array.isArray(args.artifacts) ? (args.artifacts as string[]) : [],
             summary: typeof args.summary === "string" ? args.summary : undefined,
           },
