@@ -180,22 +180,51 @@ export function createInferenceClient(
           : undefined,
       });
     } catch (error) {
-      let lastGroqError: unknown = error;
+      // Sovereign mode uses Groq as the primary path, but a provider outage or
+      // quota exhaustion must not stop the entire agent. Fall back immediately
+      // to Gemini when a Gemini key is configured; do not retry the same Groq
+      // request because a 429/TPD failure will not recover by retrying.
+      if (
+        backend === "groq" &&
+        process.env.RITTY_MODE === "sovereign" &&
+        geminiApiKey
+      ) {
+        const groqMessage = error instanceof Error ? error.message : String(error);
+        const fallbackModel = process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.8-flash";
+        const fallbackBody: Record<string, unknown> = {
+          ...body,
+          model: fallbackModel,
+          max_tokens: tokenLimit,
+        };
+        delete fallbackBody.max_completion_tokens;
 
-      // Groq remains primary. When sovereign Groq fails (including quota/rate
-      // limits), fail over immediately through a small Gemini model chain.
-      // We deliberately do not retry the quota-limited Groq request here.
-      // Sovereign mode must fail fast on Groq errors instead of falling through to
-      // an unrelated provider with its own quota. A Gemini fallback caused long
-      // retries, 429 cascades, and stalled autonomous workers in production.
-      if (backend === "groq" && process.env.RITTY_MODE === "sovereign") {
-        const message = error instanceof Error ? error.message : String(error);
         logger.warn(
-          `[SOVEREIGN] Groq inference failed; no secondary provider fallback: ${message.slice(0, 500)}`,
+          `[SOVEREIGN] Groq inference failed; switching to Gemini fallback (${fallbackModel}): ${groqMessage.slice(0, 300)}`,
         );
+
+        try {
+          return await chatViaOpenAiCompatible({
+            model: fallbackModel,
+            body: fallbackBody,
+            apiUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+            apiKey: geminiApiKey,
+            backend: "gemini",
+            httpClient,
+            retries: SOVEREIGN_PROVIDER_RETRIES,
+          });
+        } catch (geminiError) {
+          const geminiMessage =
+            geminiError instanceof Error ? geminiError.message : String(geminiError);
+          logger.error(
+            `[SOVEREIGN] Gemini fallback also failed: ${geminiMessage.slice(0, 500)}`,
+          );
+          throw new Error(
+            `Groq inference failed and Gemini fallback failed: ${geminiMessage}`,
+          );
+        }
       }
 
-      throw lastGroqError;
+      throw error;
     }
   };
 
