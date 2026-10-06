@@ -116,23 +116,32 @@ async function searchDuckDuckGo(query: string, limit = 6): Promise<Array<{ title
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12_000);
   try {
-    const response = await fetch(searchUrl, { signal: controller.signal, headers: { "user-agent": "Mozilla/5.0 RITTY/1.0", accept: "text/html" } });
+    const response = await fetch(searchUrl, {
+      signal: controller.signal,
+      headers: { "user-agent": "Mozilla/5.0 RITTY/1.0", accept: "text/html" },
+    });
     const html = await response.text();
     const results: Array<{ title: string; url: string; snippet: string }> = [];
-    const rx = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+    const linkRx = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\\/a>/gis;
     let match: RegExpExecArray | null;
-    while ((match = rx.exec(html)) && results.length < limit) {
+    while ((match = linkRx.exec(html)) && results.length < limit) {
       let href = match[1];
       try {
         const parsed = new URL(href, "https://html.duckduckgo.com");
         const target = parsed.searchParams.get("uddg");
         if (target) href = decodeURIComponent(target);
       } catch {}
-      if (!/^https?:\/\//i.test(href)) continue;
-      results.push({ title: decodeHtml(match[2]).slice(0, 220), url: href, snippet: decodeHtml(match[3]).slice(0, 420) });
+      if (!/^https?:\\/\\//i.test(href)) continue;
+      results.push({
+        title: decodeHtml(match[2]).slice(0, 220),
+        url: href,
+        snippet: "",
+      });
     }
     return results;
-  } finally { clearTimeout(timer); }
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function heuristicScore(text: string, url: string): { score: number; reasons: string[] } {
