@@ -1,334 +1,119 @@
 import http from "node:http";
+import fs from "node:fs";
 import type { AutomatonConfig, AutomatonDatabase } from "../types.js";
 
 const DASHBOARD_HTML = String.raw`<!doctype html>
 <html lang="pt-BR">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#07080c" />
-<title>RITTY / Command Center</title>
-<style>:root{--bg:#07090d;--gold:#e3b72f;--ink:#f3f4f6;--muted:#8e96a3;--cyan:#59f4d2;--purple:#9b8cff;--red:#ff5d79}
-*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#07090d;color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif}body{overflow-x:hidden}
-.command-room{min-height:100vh;background:radial-gradient(900px 500px at 50% 8%,rgba(61,83,103,.18),transparent 60%),linear-gradient(#06080c,#0a0d12 48%,#080a0e)}
-.room-header{height:64px;display:flex;justify-content:space-between;align-items:center;padding:0 24px;border-bottom:1px solid rgba(229,190,52,.2);background:rgba(7,9,13,.92);position:sticky;top:0;z-index:30;backdrop-filter:blur(16px)}
-.room-brand{display:flex;gap:11px;align-items:center}.brand-mark{width:34px;height:34px;display:grid;place-items:center;border:1px solid rgba(227,183,47,.65);border-radius:8px;color:var(--gold);font-weight:900}.tiny{font-size:9px;letter-spacing:.18em;color:#7f8794}.room-brand strong{font-size:18px;letter-spacing:.08em}.room-status{display:flex;gap:9px;align-items:center;font-size:11px;letter-spacing:.12em;color:#b4bbc5}.sep{color:#4b5360}.dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:#f3b942;box-shadow:0 0 16px currentColor}.dot.ok{background:var(--cyan)}
-.ops-room{max-width:1500px;margin:0 auto;padding:20px 22px 12px}.back-wall{height:420px;position:relative;overflow:hidden;border:1px solid rgba(229,190,52,.22);border-bottom:none;background:linear-gradient(180deg,#171b21,#22272d 65%,#15181d);box-shadow:inset 0 0 100px rgba(0,0,0,.6)}
-.back-wall:before,.back-wall:after{content:"";position:absolute;top:0;bottom:0;width:18%;background:linear-gradient(90deg,rgba(8,10,14,.95),rgba(37,40,43,.2),rgba(8,10,14,.95));opacity:.7}.back-wall:before{left:0}.back-wall:after{right:0}
-.wall-topline{position:absolute;left:24px;right:24px;top:17px;display:flex;justify-content:space-between;font-size:10px;color:#a7afb8;letter-spacing:.14em}
-.wall-screen{position:absolute;background:linear-gradient(145deg,#0a1417,#0c2322);border:2px solid #aa8528;box-shadow:0 0 0 3px rgba(229,190,52,.08),0 15px 30px rgba(0,0,0,.4),inset 0 0 22px rgba(77,255,198,.08);border-radius:3px}.main-screen{width:54%;height:270px;left:23%;top:72px;padding:19px 22px}.screen-top,.screen-footer{display:flex;justify-content:space-between;color:#62eecb;font-size:10px;letter-spacing:.1em}.screen-value{font-size:54px;line-height:1;margin-top:27px;font-weight:800;color:#62f0ce}.screen-label{font-size:9px;color:#71817f;letter-spacing:.2em;margin-top:5px}.screen-chart{height:84px;display:flex;align-items:end;gap:5px;margin-top:17px;border-bottom:1px solid rgba(92,242,206,.2)}.screen-chart i{flex:1;background:linear-gradient(to top,rgba(45,226,183,.08),rgba(45,226,183,.6));height:40%;display:block}.screen-chart i:nth-child(1){height:20%}.screen-chart i:nth-child(2){height:42%}.screen-chart i:nth-child(3){height:31%}.screen-chart i:nth-child(4){height:59%}.screen-chart i:nth-child(5){height:45%}.screen-chart i:nth-child(6){height:71%}.screen-chart i:nth-child(7){height:61%}.screen-chart i:nth-child(8){height:86%}.screen-chart i:nth-child(9){height:76%}.screen-chart i:nth-child(10){height:92%}.screen-footer{margin-top:12px;color:#8fa5a1;letter-spacing:.02em}.screen-footer b{color:#e8edf0}.side-screen{width:18%;height:118px;top:146px;padding:15px 17px}.left-screen{left:2.5%}.right-screen{right:2.5%}.screen-title{color:#8b949e;font-size:9px;letter-spacing:.15em}.side-screen strong{display:block;font-size:25px;margin-top:14px;color:#e9c95f}.side-screen small{display:block;color:#687178;font-size:8px;margin-top:5px}.wall-grid-lines{position:absolute;inset:0;background:linear-gradient(rgba(229,190,52,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(229,190,52,.035) 1px,transparent 1px);background-size:44px 44px;pointer-events:none}
-.floor{height:500px;position:relative;margin-top:-2px;overflow:hidden;background:linear-gradient(145deg,#4d5054,#303339 55%,#3a3b3f);border:1px solid #9d7925;box-shadow:0 0 0 4px rgba(229,190,52,.06),0 35px 65px rgba(0,0,0,.55);transform:perspective(1000px) rotateX(52deg) scale(.97);transform-origin:top center;transform-style:preserve-3d}.floor:before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(239,196,75,.13) 1px,transparent 1px),linear-gradient(rgba(239,196,75,.1) 1px,transparent 1px);background-size:44px 44px}.floor-border{position:absolute;inset:0;border:3px solid rgba(227,183,47,.8);box-shadow:inset 0 0 0 8px rgba(0,0,0,.14)}.floor-glow{position:absolute;left:25%;right:25%;top:20%;height:42%;background:radial-gradient(ellipse,rgba(87,246,211,.08),transparent 70%)}
-.desk{position:absolute;width:230px;height:118px;transform:translateZ(25px);transform-style:preserve-3d}.desk-body{position:absolute;left:0;right:0;bottom:0;height:78px;background:linear-gradient(145deg,#65686b,#383a3e);border:2px solid #999b9d;box-shadow:0 11px 0 #23262a,0 20px 22px rgba(0,0,0,.38)}.agent-screen{position:absolute;z-index:2;left:55px;top:-42px;width:120px;height:65px;padding:9px 10px;background:linear-gradient(160deg,#10181a,#08110f);border:2px solid #b38c2b;box-shadow:0 0 18px rgba(78,255,213,.12);transform:translateZ(20px)}.agent-screen b{display:block;font-size:9px;color:#dce4e5;letter-spacing:.08em}.agent-screen small{display:block;font-size:8px;color:#64f0ca;margin-top:12px}.scan{position:absolute;left:7px;right:7px;top:28px;height:1px;background:rgba(92,246,205,.5);box-shadow:0 0 9px rgba(92,246,205,.7);animation:scan 2.6s ease-in-out infinite}@keyframes scan{50%{top:54px}}.chair{position:absolute;left:86px;bottom:-46px;width:57px;height:32px;background:#24272c;border:2px solid #484c52;transform:translateZ(10px)}.agent-head{position:absolute;left:104px;top:44px;width:27px;height:27px;border-radius:50%;background:linear-gradient(145deg,#57eecb,#113831);box-shadow:0 0 18px rgba(70,246,211,.32);transform:translateZ(38px)}.agent-head:after{content:"";position:absolute;left:4px;right:4px;top:14px;height:4px;background:#0b1615;border-radius:50%}.agent-head.violet{background:linear-gradient(145deg,#b69cff,#3b2d70);box-shadow:0 0 18px rgba(155,140,255,.3)}.agent-head.blue{background:linear-gradient(145deg,#69a8ff,#19355c)}.agent-head.gold{background:linear-gradient(145deg,#f1d069,#5b4310)}.agent-left-top{left:11%;top:13%}.agent-right-top{right:11%;top:13%}.agent-left-bottom{left:7%;bottom:9%}.agent-right-bottom{right:7%;bottom:9%}
-.center-console{position:absolute;left:50%;top:39%;width:290px;height:165px;transform:translate(-50%,-50%) translateZ(34px);transform-style:preserve-3d}.console-screen{position:absolute;left:33px;right:33px;top:0;height:102px;background:linear-gradient(160deg,#081716,#102c29);border:2px solid #b18b2f;box-shadow:inset 0 0 35px rgba(69,241,203,.1),0 12px 19px rgba(0,0,0,.42);padding:16px}.console-brand{font-size:18px;font-weight:900;letter-spacing:.18em;color:#68f0cc;margin-bottom:9px}.console-line{display:flex;justify-content:space-between;font-size:9px;color:#8da09d;margin-top:7px}.console-line b{color:#e7c95f}.console-base{position:absolute;left:10px;right:10px;bottom:0;height:52px;background:linear-gradient(145deg,#6b6d70,#303338);border:2px solid #919396;box-shadow:0 10px 0 #22252a,0 16px 20px rgba(0,0,0,.5)}
-.floor-caption{position:absolute;left:50%;bottom:25px;transform:translateX(-50%) translateZ(38px);display:flex;align-items:center;gap:11px;padding:9px 14px;border:1px solid rgba(255,255,255,.14);border-radius:99px;background:rgba(8,10,14,.74);backdrop-filter:blur(10px);font-size:9px;letter-spacing:.1em;color:#b7bec6}.pill-live{color:#62f0ce}.pill-live i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#62f0ce;box-shadow:0 0 10px #62f0ce;margin-right:4px}
-.bottom-panel{max-width:1500px;margin:18px auto 0;display:grid;grid-template-columns:1fr 1.35fr;gap:18px;padding:0 22px 28px}.panel-card{border:1px solid rgba(255,255,255,.09);background:linear-gradient(180deg,rgba(19,23,30,.94),rgba(9,12,17,.96));border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.25);padding:16px}.panel-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:13px}.panel-heading span{color:#707986;font-size:9px;letter-spacing:.11em}.feed,.chat-feed{max-height:245px;overflow:auto}.feed-row{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;padding:10px;border:1px solid rgba(255,255,255,.05);border-radius:11px;margin-bottom:7px}.feed-dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan)}.feed-dot.bad{background:var(--red);box-shadow:0 0 10px var(--red)}.feed-row b{font-size:11px}.feed-row small{display:block;color:#6f7782;font-size:9px;margin-top:3px}.feed-row>strong{font-size:9px;color:#aeb6c2}
-.chat-feed{display:flex;flex-direction:column;gap:10px;padding-right:4px}.chat-empty{color:#6f7784;text-align:center;padding:22px;font-size:11px}.chat-item{padding:9px 2px}.chat-meta{display:flex;justify-content:space-between;color:#6e7784;font-size:8px;text-transform:uppercase;letter-spacing:.08em}.chat-user,.chat-agent{margin-top:6px;padding:9px 11px;border-radius:12px;line-height:1.45;font-size:11px;white-space:pre-wrap;word-break:break-word}.chat-user{background:rgba(227,183,47,.08);border:1px solid rgba(227,183,47,.16)}.chat-agent{background:rgba(83,240,207,.06);border:1px solid rgba(83,240,207,.12);color:#d7e7e4}.agent-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--cyan);margin-right:7px;box-shadow:0 0 8px var(--cyan)}.chat-form{display:grid;grid-template-columns:1fr auto;gap:9px;margin-top:10px}.chat-form textarea{width:100%;resize:none;min-height:44px;max-height:120px;padding:12px 13px;color:#ecf0f3;background:#0a0d12;border:1px solid rgba(255,255,255,.1);border-radius:12px;outline:none}.chat-form button{border:0;border-radius:12px;padding:0 15px;background:linear-gradient(135deg,#e3b72f,#b88d1e);color:#101217;font-weight:800;cursor:pointer}.chat-form button:disabled{opacity:.55}.chat-form button b{font-size:17px;margin-left:5px}.chat-hint{color:#5f6874;font-size:9px;margin-top:8px}.mobile-metrics{display:none}
-@media(max-width:900px){.back-wall{height:360px}.floor{height:410px}.desk{transform:scale(.7) translateZ(25px)}.agent-left-top{left:2%;top:10%}.agent-right-top{right:2%;top:10%}.agent-left-bottom{left:-2%;bottom:6%}.agent-right-bottom{right:-2%;bottom:6%}.center-console{transform:translate(-50%,-50%) translateZ(32px) scale(.82)}.bottom-panel{grid-template-columns:1fr}}
-@media(max-width:620px){.room-header{padding:0 13px;height:56px}.tiny{display:none}.ops-room{padding:10px 8px}.back-wall{height:300px}.main-screen{width:68%;left:16%;height:195px;top:58px;padding:13px 14px}.screen-value{font-size:36px;margin-top:17px}.screen-chart{height:50px}.side-screen{display:none}.floor{height:360px;transform:perspective(850px) rotateX(53deg) scale(.97)}.desk{transform:scale(.53) translateZ(25px)}.center-console{transform:translate(-50%,-50%) translateZ(30px) scale(.68)}.floor-caption{font-size:7px;bottom:15px;white-space:nowrap}.bottom-panel{padding:0 8px 18px;gap:10px}.panel-card{padding:12px}.feed,.chat-feed{max-height:210px}.chat-form{grid-template-columns:1fr 76px}.chat-form button{padding:0 10px;font-size:0}.chat-form button b{font-size:17px}.mobile-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;padding:0 8px 16px}.mobile-metrics>div{border:1px solid rgba(255,255,255,.08);background:#0c1016;border-radius:12px;padding:9px}.mobile-metrics span{display:block;font-size:8px;color:#68717d;letter-spacing:.12em}.mobile-metrics b{display:block;margin-top:4px;font-size:13px}}
-/* ─────────────────────────────────────────────────────────────
-   RITTY 3D OPERATIONS FLOOR — immersive office
-   Pure CSS/HTML so it works on Railway without extra assets.
-   ───────────────────────────────────────────────────────────── */
-body{background:#05070a}
-.ops-room{max-width:1540px;padding-top:18px}
-.back-wall{height:390px;background:linear-gradient(180deg,#0b1118 0%,#111b24 55%,#071016 100%);border-color:rgba(96,214,255,.22);box-shadow:inset 0 -80px 120px rgba(0,0,0,.55)}
-.back-wall:before,.back-wall:after{width:24%;opacity:.7;background:linear-gradient(90deg,rgba(1,5,10,.96),rgba(20,40,52,.18),rgba(1,5,10,.96))}
-.wall-topline{color:#7c96a7}
-.wall-grid-lines{background:linear-gradient(rgba(99,219,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(99,219,255,.025) 1px,transparent 1px);background-size:48px 48px}
-.wall-screen{border-color:#2b6676;background:linear-gradient(145deg,#071319,#071f28);box-shadow:0 0 0 1px rgba(103,225,255,.12),0 24px 45px rgba(0,0,0,.48),inset 0 0 30px rgba(67,222,255,.08)}
-.main-screen{height:246px;top:73px;padding:18px 22px}
-.screen-value{color:#67efff;text-shadow:0 0 28px rgba(103,239,255,.38)}
-.screen-chart i{background:linear-gradient(to top,rgba(67,222,255,.05),rgba(67,222,255,.72))}
-.side-screen strong{color:#74e8ff}
-
-/* Main 3D viewport */
-.floor{height:545px;margin-top:-2px;position:relative;overflow:hidden;
-  background:
-    radial-gradient(ellipse at 50% 54%,rgba(60,227,255,.12),transparent 33%),
-    linear-gradient(145deg,#27313a 0%,#1c242b 48%,#12191f 100%);
-  border:1px solid rgba(100,221,255,.28);
-  box-shadow:0 0 0 4px rgba(76,210,255,.04),0 35px 90px rgba(0,0,0,.62);
-  transform:perspective(1200px) rotateX(50deg) scale(.97);
-  transform-origin:top center;transform-style:preserve-3d;
-}
-.floor:before{content:"";position:absolute;inset:-20%;
-  background:
-    linear-gradient(90deg,rgba(91,226,255,.08) 1px,transparent 1px),
-    linear-gradient(rgba(91,226,255,.06) 1px,transparent 1px);
-  background-size:52px 52px;transform:translateZ(0);pointer-events:none}
-.floor:after{content:"";position:absolute;left:7%;right:7%;top:10%;height:2px;background:linear-gradient(90deg,transparent,rgba(99,228,255,.7),transparent);box-shadow:0 0 24px rgba(99,228,255,.45);transform:translateZ(2px)}
-
-.office-shell{position:absolute;inset:0;transform-style:preserve-3d}
-.room-back, .room-side, .room-window, .ceiling-beam{position:absolute;transform-style:preserve-3d;pointer-events:none}
-.room-back{left:6%;right:6%;top:7%;height:62%;background:linear-gradient(180deg,#0a1219,#101d25);border:1px solid rgba(113,224,255,.16);transform:translateZ(14px);box-shadow:inset 0 0 80px rgba(0,0,0,.42)}
-.room-back:after{content:"";position:absolute;inset:16px;background:linear-gradient(180deg,rgba(85,219,255,.025),transparent);border:1px solid rgba(85,219,255,.05)}
-.room-side{width:12%;height:62%;top:7%;background:linear-gradient(165deg,#101a22,#050a0e);border:1px solid rgba(94,204,234,.1);transform:translateZ(15px) rotateY(62deg);transform-origin:left center}
-.room-side.left{left:0}.room-side.right{right:0;transform-origin:right center;transform:translateZ(15px) rotateY(-62deg)}
-.room-window{left:20%;right:20%;top:10%;height:38%;background:linear-gradient(180deg,#061a2a,#071e2d 55%,#030b12);border:1px solid rgba(107,223,255,.25);box-shadow:inset 0 0 55px rgba(71,202,255,.12),0 0 24px rgba(71,202,255,.08);transform:translateZ(23px)}
-.room-window:before{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 0 38%,rgba(150,236,255,.12) 40%,transparent 42%),linear-gradient(90deg,transparent 0 49%,rgba(110,222,255,.16) 50%,transparent 51%)}
-.room-window:after{content:"RITTY  //  AUTONOMOUS OPERATIONS";position:absolute;right:16px;bottom:11px;color:rgba(130,224,255,.55);font-size:8px;letter-spacing:.15em}
-.ceiling-beam{top:7%;height:4px;width:30%;background:linear-gradient(90deg,transparent,#62e7ff,transparent);box-shadow:0 0 22px rgba(98,231,255,.6);transform:translateZ(44px)}
-.ceiling-beam.b1{left:11%}.ceiling-beam.b2{left:35%;width:30%}.ceiling-beam.b3{right:11%}
-
-.office-title{position:absolute;left:50%;top:8%;transform:translate(-50%,-50%) translateZ(38px);color:#d8f8ff;font-size:18px;font-weight:900;letter-spacing:.25em;text-shadow:0 0 24px rgba(100,231,255,.35);white-space:nowrap}
-.office-subtitle{position:absolute;left:50%;top:12%;transform:translate(-50%,-50%) translateZ(35px);font-size:7px;letter-spacing:.32em;color:#5d8999;white-space:nowrap}
-
-.holo-ring{position:absolute;left:50%;top:43%;width:310px;height:180px;transform:translate(-50%,-50%) translateZ(48px);border:1px solid rgba(98,236,255,.16);border-radius:50%;box-shadow:0 0 35px rgba(98,236,255,.08);animation:holoFloat 5s ease-in-out infinite}
-.holo-ring:before,.holo-ring:after{content:"";position:absolute;inset:19px;border:1px solid rgba(113,224,255,.12);border-radius:50%;transform:rotateX(62deg) rotateZ(18deg)}
-.holo-ring:after{inset:38px;transform:rotateX(68deg) rotateZ(-21deg)}
-.holo-core{position:absolute;left:50%;top:38%;width:85px;height:85px;transform:translate(-50%,-50%) translateZ(78px);border-radius:42% 58% 52% 48%/54% 42% 58% 46%;background:radial-gradient(circle at 35% 30%,#c8fbff 0,#62e7ff 18%,#14728a 55%,rgba(5,20,25,.1) 78%);box-shadow:0 0 25px rgba(98,231,255,.7),0 0 85px rgba(98,231,255,.25);animation:corePulse 3.8s ease-in-out infinite;transform-style:preserve-3d}
-.holo-core:before{content:"";position:absolute;inset:-15px;border:1px solid rgba(129,237,255,.5);border-radius:50%;transform:rotateX(69deg) rotateY(14deg);box-shadow:0 0 18px rgba(129,237,255,.35)}
-.holo-core:after{content:"";position:absolute;left:50%;top:50%;width:10px;height:10px;transform:translate(-50%,-50%);border-radius:50%;background:#efffff;box-shadow:0 0 20px 8px rgba(155,245,255,.65)}
-
-.workstation{position:absolute;width:235px;height:140px;transform-style:preserve-3d}
-.ws-left{left:7%;top:40%;transform:translateZ(52px) rotateY(8deg)}
-.ws-right{right:7%;top:40%;transform:translateZ(52px) rotateY(-8deg)}
-.ws-back-left{left:10%;bottom:4%;transform:translateZ(35px) rotateY(5deg) scale(.9)}
-.ws-back-right{right:10%;bottom:4%;transform:translateZ(35px) rotateY(-5deg) scale(.9)}
-.ws-desk{position:absolute;left:0;right:0;bottom:0;height:62px;background:linear-gradient(150deg,#39434a,#161d23);border:1px solid rgba(145,214,228,.22);box-shadow:0 12px 0 #0a0f14,0 24px 28px rgba(0,0,0,.48);transform:translateZ(10px)}
-.ws-top{position:absolute;left:35px;right:35px;top:6px;height:13px;background:linear-gradient(180deg,#5f737b,#263238);border:1px solid rgba(171,230,239,.18);transform:translateZ(22px);box-shadow:0 8px 0 #1b252b}
-.ws-monitor{position:absolute;left:54px;top:-42px;width:126px;height:64px;background:linear-gradient(155deg,#061419,#081e24);border:2px solid #2f7e91;box-shadow:0 0 0 1px rgba(102,231,255,.12),0 0 24px rgba(102,231,255,.08);transform:translateZ(34px);padding:9px 10px}
-.ws-monitor b{display:block;font-size:9px;letter-spacing:.12em;color:#d4f6ff}
-.ws-monitor small{display:block;margin-top:11px;color:#5fe6ff;font-size:8px}
-.ws-monitor i{position:absolute;left:7px;right:7px;top:36px;height:1px;background:rgba(102,231,255,.72);box-shadow:0 0 8px rgba(102,231,255,.9);animation:scanMonitor 2.4s ease-in-out infinite}
-.ws-chair{position:absolute;left:84px;bottom:-37px;width:62px;height:36px;background:#11171c;border:1px solid #38444b;border-radius:10px 10px 4px 4px;transform:translateZ(9px)}
-.bot{position:absolute;left:100px;top:51px;width:31px;height:42px;transform:translateZ(36px);transform-style:preserve-3d}
-.bot-head{position:absolute;left:2px;top:0;width:27px;height:27px;border-radius:42%;background:linear-gradient(145deg,#b9fbff,#1b7688);border:1px solid rgba(190,255,255,.52);box-shadow:0 0 24px rgba(98,231,255,.36)}
-.bot-head:before{content:"";position:absolute;left:6px;right:6px;top:10px;height:4px;border-radius:999px;background:#041115;box-shadow:0 0 7px #63eaff}
-.bot-head:after{content:"";position:absolute;left:11px;top:-10px;width:5px;height:10px;border-radius:999px;background:#63eaff;box-shadow:0 0 12px #63eaff}
-.bot-body{position:absolute;left:5px;top:26px;width:21px;height:17px;border-radius:6px;background:linear-gradient(145deg,#6bcddd,#143842);border:1px solid rgba(181,247,255,.25);box-shadow:0 7px 13px rgba(0,0,0,.25)}
-.bot-body:after{content:"";position:absolute;left:8px;top:5px;width:5px;height:5px;border-radius:50%;background:#bffbff;box-shadow:0 0 9px #bffbff}
-.data-stream{position:absolute;right:30px;top:17%;width:120px;height:180px;transform:translateZ(40px);opacity:.5}
-.data-stream span{display:block;height:2px;margin:12px 0;background:linear-gradient(90deg,transparent,#66e8ff);animation:dataFlow 2.8s linear infinite}
-.data-stream span:nth-child(2){width:82%;margin-left:18%}.data-stream span:nth-child(3){width:68%}.data-stream span:nth-child(4){width:92%;margin-left:8%}.data-stream span:nth-child(5){width:57%;margin-left:31%}.data-stream span:nth-child(6){width:76%}
-
-.rack{position:absolute;width:82px;height:160px;bottom:11%;transform:translateZ(39px);background:linear-gradient(145deg,#11191f,#05090d);border:1px solid rgba(122,204,220,.2);box-shadow:14px 18px 26px rgba(0,0,0,.4)}
-.rack.left{left:2%}.rack.right{right:2%}
-.rack h4{margin:9px 8px 5px;font-size:7px;color:#6e98a4;letter-spacing:.14em}
-.rack .rack-unit{height:16px;margin:5px 7px;border:1px solid rgba(93,219,255,.11);background:#091117;position:relative}
-.rack .rack-unit:after{content:"";position:absolute;right:7px;top:6px;width:4px;height:4px;border-radius:50%;background:#60eaff;box-shadow:0 0 8px #60eaff}
-.rack .rack-unit i{display:block;width:38%;height:1px;margin:7px 0 0 6px;background:#345764}
-
-.stat-puck{position:absolute;padding:7px 10px;border:1px solid rgba(117,224,255,.16);background:rgba(4,11,15,.72);border-radius:999px;backdrop-filter:blur(8px);font-size:8px;letter-spacing:.08em;color:#7ea4b1;transform:translateZ(52px)}
-.p1{left:29%;bottom:15%}.p2{right:29%;bottom:15%}
-.stat-puck b{color:#d5f8ff;margin-left:5px}
-
-.floor-caption{bottom:18px;background:rgba(2,8,11,.82);border-color:rgba(113,224,255,.18)}
-.pill-live{color:#62eaff}.pill-live i{background:#62eaff;box-shadow:0 0 10px #62eaff}
-
-@keyframes holoFloat{0%,100%{transform:translate(-50%,-50%) translateZ(48px) rotateZ(-2deg)}50%{transform:translate(-50%,-52%) translateZ(56px) rotateZ(2deg)}}
-@keyframes corePulse{0%,100%{filter:saturate(.95);transform:translate(-50%,-50%) translateZ(78px) scale(.93) rotate(0)}50%{filter:saturate(1.35);transform:translate(-50%,-52%) translateZ(88px) scale(1.08) rotate(10deg)}}
-@keyframes scanMonitor{0%,100%{top:35px;opacity:.45}50%{top:53px;opacity:1}}
-@keyframes dataFlow{0%{transform:translateX(-18px);opacity:0}25%{opacity:.9}100%{transform:translateX(30px);opacity:0}}
-
-@media(max-width:900px){
-  .back-wall{height:350px}.floor{height:470px}
-  .workstation{transform:scale(.78) translateZ(44px)}.ws-right{right:-1%}.ws-left{left:-1%}
-  .ws-back-left{left:0}.ws-back-right{right:0}
-  .rack{transform:translateZ(31px) scale(.8)}.data-stream{right:8px}
-}
-@media(max-width:620px){
-  .back-wall{height:280px}.main-screen{width:70%;left:15%;height:180px;top:56px}.screen-value{font-size:34px}
-  .floor{height:370px;transform:perspective(900px) rotateX(54deg) scale(.98)}
-  .office-title{font-size:12px;top:8%}.office-subtitle{font-size:6px}
-  .workstation{transform:scale(.55) translateZ(38px)}.ws-left{left:-8%;top:41%}.ws-right{right:-8%;top:41%}
-  .ws-back-left{left:-3%;bottom:0}.ws-back-right{right:-3%;bottom:0}
-  .holo-ring{width:250px;height:150px}.holo-core{width:70px;height:70px}
-  .rack{display:none}.data-stream{display:none}.stat-puck{font-size:7px}.p1{left:18%;bottom:19%}.p2{right:18%;bottom:19%}
-  .floor-caption{font-size:7px}
-}
-
-
-/* Habbo-inspired pixel office: framed, tile-based room */
-.command-room{background:#101820}
-.ops-room{max-width:1260px;padding:18px 18px 10px}
-.back-wall{height:310px;border:4px solid #253947;border-bottom:0;background:linear-gradient(180deg,#91b9c8 0%,#b8d2d4 58%,#637f89 59%,#344b56 100%);box-shadow:inset 0 0 0 5px #45616d,inset 0 -22px 0 rgba(13,28,38,.24)}
-.back-wall:before,.back-wall:after{width:12%;opacity:1;background:linear-gradient(90deg,#304753,#78939b 48%,#304753);border-left:4px solid #243b46;border-right:4px solid #243b46}
-.wall-topline{color:#1b3440;font-weight:900;text-shadow:0 1px #d8e9e9}
-.wall-grid-lines{opacity:.25;background-size:32px 32px}
-.wall-screen{border:4px solid #293d47;border-radius:0;background:#172c35;box-shadow:inset 0 0 0 3px #66838c,5px 6px 0 rgba(16,32,42,.55)}
-.main-screen{height:205px;top:66px;padding:14px 16px}
-.screen-value{font-size:43px;color:#8ff6dc;text-shadow:2px 2px #1d554d}
-.screen-chart{height:55px}
-.side-screen{height:100px;top:120px;padding:10px 12px}
-.side-screen strong{font-size:21px}
-.floor{height:440px;margin-top:0;transform:none;transform-origin:center;background-color:#b6a48b;
- background-image:linear-gradient(30deg,transparent 48%,rgba(67,50,40,.2) 49%,rgba(67,50,40,.2) 51%,transparent 52%),linear-gradient(150deg,transparent 48%,rgba(67,50,40,.2) 49%,rgba(67,50,40,.2) 51%,transparent 52%),linear-gradient(180deg,#d5c6a7,#9d8c75);
- background-size:52px 30px,52px 30px,100% 100%;
- border:5px solid #293d47;box-shadow:inset 0 0 0 5px #d8c7a3,0 8px 0 #18262d,0 22px 45px rgba(0,0,0,.4);perspective:1000px}
-.floor:before{inset:0;background-image:linear-gradient(30deg,transparent 48.5%,rgba(81,63,47,.32) 49%,rgba(81,63,47,.32) 51%,transparent 51.5%),linear-gradient(150deg,transparent 48.5%,rgba(81,63,47,.32) 49%,rgba(81,63,47,.32) 51%,transparent 51.5%);background-size:52px 30px;opacity:.9}
-.floor:after{display:none}
-.floor-border{inset:5px;border:4px solid #5a4937;box-shadow:inset 0 0 0 3px #e3d2af}
-.office-shell{inset:0;transform-style:preserve-3d}
-.room-back{left:7%;right:7%;top:4%;height:34%;background:linear-gradient(180deg,#c2d9d8,#91b5b7 80%,#6c929b);border:5px solid #526b70;box-shadow:inset 0 -10px #718e91,5px 6px 0 rgba(45,53,50,.3);transform:none}
-.room-back:after{inset:10px;border:3px solid rgba(58,83,88,.45);background:repeating-linear-gradient(90deg,transparent 0 48px,rgba(65,91,95,.15) 49px 52px)}
-.room-side{width:8%;height:36%;top:4%;background:linear-gradient(90deg,#718c8d,#b4cbbe);border:4px solid #526b70;transform:none;box-shadow:inset 0 0 0 4px rgba(226,232,209,.35)}
-.room-side.left{left:0}.room-side.right{right:0;transform:none}
-.room-window{left:26%;right:26%;top:7%;height:25%;background:linear-gradient(180deg,#74b8d4,#c1e4e2 75%,#6b9298);border:5px solid #475e66;box-shadow:inset 0 0 0 4px #d2d8c6,5px 6px 0 rgba(45,53,50,.28);transform:none}
-.room-window:before{background:linear-gradient(90deg,transparent 47%,#526d73 48% 52%,transparent 53%),linear-gradient(180deg,transparent 45%,#526d73 46% 52%,transparent 53%)}
-.room-window:after{color:#254550;font-size:8px;font-weight:900}
-.ceiling-beam{display:none}
-.office-title{top:3%;font-size:13px;letter-spacing:.12em;color:#f8f2d8;text-shadow:2px 2px #40545a,3px 3px #253840;transform:translate(-50%,-50%)}
-.office-subtitle{top:7%;font-size:7px;letter-spacing:.15em;color:#294b55;transform:translate(-50%,-50%)}
-.holo-ring,.holo-core{display:none}
-.workstation{width:170px;height:110px;transform-style:flat;filter:drop-shadow(5px 7px 0 rgba(47,38,30,.22))}
-.ws-left{left:13%;top:40%;transform:none}.ws-right{right:13%;top:40%;transform:none}
-.ws-back-left{left:17%;bottom:5%;transform:none}.ws-back-right{right:17%;bottom:5%;transform:none}
-.ws-desk{left:0;right:0;bottom:0;height:44px;background:linear-gradient(180deg,#b17b4b 0 20%,#87552f 21% 100%);border:4px solid #68462e;box-shadow:inset 0 4px #d8a16a,0 8px 0 #583b2a;transform:none;border-radius:0}
-.ws-top{left:20px;right:20px;top:13px;height:12px;background:#d4a06c;border:3px solid #80552f;transform:none;box-shadow:none}
-.ws-monitor{left:43px;top:-25px;width:84px;height:49px;background:#243c46;border:4px solid #536c70;box-shadow:inset 0 0 0 3px #111f26;transform:none;padding:5px}
-.ws-monitor b{font-size:7px;color:#e6ead7}.ws-monitor small{font-size:7px;margin-top:5px;color:#77f0c9}.ws-monitor i{left:5px;right:5px;top:22px}
-.ws-chair{left:60px;bottom:-27px;width:42px;height:25px;background:#547d83;border:4px solid #344e59;border-radius:0;transform:none;box-shadow:0 5px 0 #293e47}
-.bot{left:70px;top:31px;width:28px;height:38px;transform:none}
-.bot-head{left:0;top:0;width:27px;height:22px;border-radius:3px;background:linear-gradient(180deg,#f2c69d 0 65%,#6b4539 66%);border:3px solid #604a42;box-shadow:2px 3px 0 rgba(0,0,0,.25)}
-.bot-head:before{left:5px;right:5px;top:8px;height:4px;border-radius:0;background:#26323a;box-shadow:0 0 0 1px #e9f4e9}
-.bot-head:after{display:none}
-.bot-body{left:3px;top:21px;width:22px;height:17px;border-radius:2px;background:linear-gradient(90deg,#4b87a0 0 25%,#c6e1d9 26% 74%,#4b87a0 75%);border:2px solid #465c61;box-shadow:2px 3px 0 rgba(0,0,0,.22)}
-.bot-body:after{left:7px;top:4px;width:4px;height:4px;border-radius:0;background:#f7e5a6;box-shadow:none}
-.rack{width:54px;height:110px;bottom:7%;background:#6f7772;border:4px solid #46565a;box-shadow:5px 6px 0 rgba(47,38,30,.28);transform:none}
-.rack.left{left:3%}.rack.right{right:3%}.rack h4{font-size:6px;color:#e8e2ca}.rack .rack-unit{height:11px;margin:4px 4px;background:#2b4147;border:2px solid #89918a}.rack .rack-unit:after{right:4px;top:3px;width:4px;height:4px}
-.data-stream{display:none}
-.stat-puck{border:3px solid #45575b;border-radius:0;background:#253a40;color:#b8d2cb;box-shadow:3px 4px 0 rgba(0,0,0,.28);font-size:7px;transform:none}
-.stat-puck b{color:#f1d780}.p1{left:36%;bottom:8%}.p2{right:36%;bottom:8%}
-.floor-caption{bottom:8px;border:3px solid #45575b;border-radius:0;background:#263b41;color:#e1e5d2;box-shadow:3px 4px 0 rgba(0,0,0,.3);transform:translateX(-50%);font-size:8px}
-@media(max-width:620px){
- .ops-room{padding:8px 7px}.back-wall{height:245px}
- .main-screen{width:68%;left:16%;height:160px;top:48px;padding:10px}
- .screen-value{font-size:29px}.screen-chart{height:38px}
- .floor{height:385px;transform:none}
- .office-title{font-size:9px;top:3%}.office-subtitle{font-size:5px;top:7%}
- .room-window{left:24%;right:24%;height:22%}
- .workstation{transform:scale(.68);transform-origin:top left}
- .ws-left{left:1%;top:38%}.ws-right{right:-4%;top:38%;transform:scale(.68);transform-origin:top right}
- .ws-back-left{left:2%;bottom:8%;transform:scale(.62);transform-origin:bottom left}
- .ws-back-right{right:1%;bottom:8%;transform:scale(.62);transform-origin:bottom right}
- .rack{display:none}.stat-puck{font-size:6px;padding:5px}.p1{left:28%;bottom:17%}.p2{right:28%;bottom:17%}
- .floor-caption{bottom:5px;font-size:6px;gap:6px;padding:5px 7px}
-}
-@media(prefers-reduced-motion:reduce){.scan,.bot-head,.holo-ring,.holo-core{animation:none!important}}
-
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="theme-color" content="#050a14"/>
+<title>RITTY — Autonomous AI Agent</title>
+<style>
+:root{--bg:#050a14;--panel:#08111f;--text:#f0f6ff;--muted:#7890a9;--line:#10243b;--blue:#397dff;--green:#1ee59d;--red:#ff5c6c;--violet:#8172ff}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif}body{overflow-x:hidden}
+button,input,textarea{font:inherit}button{cursor:pointer}
+.app{min-height:100vh;background:radial-gradient(900px 650px at 31% 0%,rgba(34,89,176,.11),transparent 60%),linear-gradient(180deg,#050a14,#050b16 55%,#040913)}
+.topbar{height:76px;border-bottom:1px solid rgba(103,164,255,.11);display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:rgba(4,9,18,.86);backdrop-filter:blur(18px);position:sticky;top:0;z-index:50}
+.brand{display:flex;align-items:center;gap:12px}.brand-mark{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;color:#63a6ff;font-weight:900;font-size:25px;background:linear-gradient(145deg,#132b52,#0a1425);border:1px solid #214a84;box-shadow:0 0 26px rgba(53,118,255,.16)}.brand-copy small{display:block;color:#6f86a1;font-size:10px;letter-spacing:.16em;font-weight:700}.brand-copy strong{display:block;font-size:21px;letter-spacing:.08em}
+.system-chip{display:flex;align-items:center;gap:11px;color:#dbebff}.system-chip .live{font-size:13px;font-weight:750}.system-chip small{display:block;color:#66819f;font-size:10px;margin-top:2px}.live-dot{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 15px rgba(30,229,157,.85)}
+.header-right{display:flex;align-items:center;gap:20px}.clock{font-size:10px;color:#69809b;letter-spacing:.08em;text-align:right}.icon-btn{width:38px;height:38px;border:1px solid #132a47;background:#0a1422;color:#8fa7c2;border-radius:50%;display:grid;place-items:center}
+.layout{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:calc(100vh - 76px)}.sidebar{border-right:1px solid rgba(72,129,201,.11);background:rgba(5,11,20,.68);padding:18px 12px;display:flex;flex-direction:column}.nav{display:grid;gap:5px}.nav button{border:1px solid transparent;background:transparent;color:#7590ad;text-align:left;padding:12px 13px;border-radius:10px;display:flex;align-items:center;gap:10px;font-size:12px;transition:.18s}.nav button:hover,.nav button.active{background:linear-gradient(90deg,rgba(55,125,255,.18),rgba(55,125,255,.05));border-color:rgba(63,133,255,.18);color:#dceaff}.nav .ico{width:18px;text-align:center;color:#708daf}.sidebar-foot{margin-top:auto;padding:14px 10px;color:#55708e;font-size:9px;line-height:1.5}.sidebar-foot b{color:#7d9bb8}
+.content{padding:20px;max-width:1500px;width:100%;margin:0 auto}.hero-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(350px,.72fr);gap:18px}.hero,.providers,.metric,.panel,.logs,.chat{border:1px solid rgba(72,129,201,.16);background:linear-gradient(180deg,rgba(10,20,35,.98),rgba(6,14,25,.98));box-shadow:0 22px 70px rgba(0,0,0,.2)}
+.hero{min-height:284px;border-radius:15px;padding:18px;display:grid;grid-template-columns:55% 45%;overflow:hidden;position:relative}.hero-copy{padding:10px 10px 10px 14px;display:flex;flex-direction:column;justify-content:center;position:relative;z-index:3}.hero-kicker{font-size:11px;letter-spacing:.06em;color:#6f89a7}.hero h1{font-size:30px;margin:7px 0 2px;letter-spacing:.03em}.hero h1 span{color:#7fb7ff}.hero-sub{font-size:12px;color:#7790aa;max-width:410px;line-height:1.6}.hero-state{display:flex;align-items:center;gap:10px;margin-top:20px;color:#dfeeff;font-size:13px;font-weight:800}.hero-state small{display:block;color:#5e7893;font-size:10px;font-weight:500;margin-top:3px}
+.robot-scene{position:relative;display:grid;place-items:center;overflow:hidden}.robot-floor{position:absolute;left:6%;right:4%;bottom:7%;height:34px;border-radius:50%;background:radial-gradient(ellipse,rgba(49,130,255,.44),rgba(49,130,255,.02) 68%,transparent 70%);filter:blur(1px)}.robot{width:150px;height:164px;position:relative;filter:drop-shadow(0 25px 28px rgba(0,0,0,.48));animation:float 4.5s ease-in-out infinite}.robot .head{position:absolute;top:5px;left:30px;width:92px;height:76px;border-radius:34px;background:linear-gradient(145deg,#1c2b41,#0b1523);border:2px solid #3d638d;box-shadow:inset 0 0 20px rgba(82,159,255,.1),0 0 30px rgba(63,132,255,.1)}.robot .visor{position:absolute;left:13px;right:13px;top:20px;height:32px;border-radius:18px;background:#020711;border:1px solid #1b3b68;display:flex;align-items:center;justify-content:center;gap:22px}.robot .eye{width:12px;height:5px;border-radius:99px;background:#51a8ff;box-shadow:0 0 11px #51a8ff}.robot .ear{position:absolute;top:29px;width:15px;height:20px;background:#17263b;border:1px solid #385579;border-radius:7px}.robot .ear.l{left:-6px}.robot .ear.r{right:-6px}.robot .body{position:absolute;left:18px;right:18px;top:79px;height:77px;border-radius:30px 30px 16px 16px;background:linear-gradient(145deg,#21334b,#0d1727);border:2px solid #395b80;box-shadow:inset 0 0 28px rgba(47,120,223,.08)}.robot .core{position:absolute;left:50%;top:26px;transform:translateX(-50%);width:31px;height:31px;border-radius:50%;background:radial-gradient(circle,#b9e5ff 0,#56a8ff 27%,#173c70 64%,#0a1422 67%);box-shadow:0 0 25px rgba(79,167,255,.5)}.robot .arm{position:absolute;top:92px;width:22px;height:59px;border-radius:12px;background:linear-gradient(180deg,#1b2a40,#0a1422);border:1px solid #365477}.robot .arm.l{left:0;transform:rotate(8deg)}.robot .arm.r{right:0;transform:rotate(-8deg)}.robot .leg{position:absolute;bottom:-12px;width:29px;height:25px;background:#101b2a;border:1px solid #2f4c6b;border-radius:8px}.robot .leg.l{left:43px}.robot .leg.r{right:43px}@keyframes float{50%{transform:translateY(-7px)}}
+.providers{border-radius:15px;padding:16px}.panel-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.panel-title strong{font-size:13px}.panel-title span{color:#607793;font-size:9px;letter-spacing:.12em}.provider{border:1px solid rgba(83,127,178,.14);background:linear-gradient(180deg,#0a1626,#08111e);border-radius:12px;padding:13px;margin-bottom:9px;display:grid;grid-template-columns:36px 1fr auto 12px;gap:11px;align-items:center;cursor:pointer;transition:.18s}.provider:hover{transform:translateY(-1px);border-color:#214b80}.provider-icon{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:#101d31;border:1px solid #284362;font-weight:900}.provider-icon.groq{color:#ff6d60}.provider-icon.gemini{color:#88a7ff}.provider-icon.fallback{color:#8f8aff}.provider b{display:block;font-size:11px}.provider small{display:block;font-size:9px;color:#667e99;margin-top:4px}.provider-status{font-size:9px;font-weight:800;padding:5px 7px;border-radius:999px;background:rgba(31,227,157,.08);color:#59e4b4;border:1px solid rgba(31,227,157,.12);white-space:nowrap}.provider-status.bad{color:#ff8d98;background:rgba(255,92,108,.08);border-color:rgba(255,92,108,.14)}.provider-arrow{color:#5c7590;font-size:16px}
+.metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:13px;margin-top:14px}.metric{border-radius:13px;padding:15px;min-height:113px}.metric .mi{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#0d1b2f;border:1px solid #1b3d67;color:#78a8ff;font-size:13px}.metric h4{font-size:10px;color:#728aa5;font-weight:650;margin:10px 0 3px}.metric strong{font-size:19px}.metric small{display:block;color:#5e7894;font-size:9px;margin-top:3px}
+.main-grid{display:grid;grid-template-columns:1.05fr 1.12fr .72fr;gap:14px;margin-top:14px}.panel{border-radius:14px;padding:15px}.feed{display:grid;gap:7px;max-height:285px;overflow:auto}.feed-row{display:grid;grid-template-columns:8px 1fr auto;gap:9px;align-items:center;padding:10px 9px;border:1px solid rgba(76,119,167,.1);background:#08121f;border-radius:10px}.fdot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 10px rgba(30,229,157,.45)}.fdot.bad{background:var(--red);box-shadow:0 0 10px rgba(255,92,108,.45)}.feed-row b{font-size:10px}.feed-row small{display:block;font-size:8px;color:#59728d;margin-top:3px}.feed-row em{font-style:normal;font-size:8px;color:#6d86a1}
+.bars{height:185px;display:flex;align-items:end;gap:8px;border-bottom:1px solid #10243a;padding:0 3px;margin-top:17px}.bar{flex:1;min-width:9px;height:20%;border-radius:5px 5px 0 0;background:linear-gradient(180deg,#6e7eff,#4352d7);box-shadow:0 0 18px rgba(89,105,255,.16);position:relative}.bar span{position:absolute;left:50%;bottom:-18px;transform:translateX(-50%);font-size:7px;color:#506984;white-space:nowrap}.usage-line{margin-top:17px}.usage-row{display:grid;grid-template-columns:55px 1fr 38px;align-items:center;gap:8px;margin:10px 0;font-size:9px;color:#6b849e}.usage-row i{display:block;height:6px;background:#12253c;border-radius:99px;overflow:hidden}.usage-row i b{display:block;height:100%;border-radius:99px;background:#5f72ff}.usage-row i b.red{background:#ff5d6e}.usage-row i b.pink{background:#ea8ae6}.health{display:grid;gap:8px}.health-row{display:flex;align-items:center;justify-content:space-between;padding:9px 10px;border:1px solid rgba(79,123,173,.11);background:#08121f;border-radius:10px;font-size:9px;color:#7190ad}.health-row b{color:#54e3ae;font-size:9px}.health-row b.warn{color:#ff9a66}.backoff{margin-top:10px;border:1px solid rgba(83,120,174,.16);border-radius:11px;padding:12px;background:linear-gradient(180deg,#0a1628,#07101c)}.backoff strong{display:block;color:#54e3ae;font-size:15px;margin-top:5px}.backoff small{color:#607994;font-size:8px}
+.lower{display:grid;grid-template-columns:1.15fr 1fr;gap:14px;margin-top:14px}.logs{border-radius:14px;padding:15px}.log-list{font-family:"SFMono-Regular",Consolas,monospace;font-size:8px;line-height:1.8;max-height:190px;overflow:auto;background:#050b13;border:1px solid #0e2033;border-radius:10px;padding:11px;color:#8098b1}.log-line{display:flex;gap:8px}.log-time{color:#45627f}.log-level{font-weight:800}.log-level.info{color:#42d9bb}.log-level.warn{color:#f0b45d}.log-level.error{color:#ff6d78}.log-msg{color:#8fa6bc}
+.chat{border-radius:14px;padding:15px;display:flex;flex-direction:column}.chat-feed{height:193px;overflow:auto;display:grid;gap:10px;padding-right:3px}.chat-empty{display:grid;place-items:center;height:100%;color:#58708b;font-size:10px}.msg{max-width:88%;padding:10px 11px;border-radius:12px;font-size:10px;line-height:1.45;border:1px solid rgba(79,124,176,.13)}.msg.user{justify-self:end;background:rgba(54,119,255,.1);color:#cfe1ff}.msg.agent{justify-self:start;background:#08131f;color:#a7bdd3}.msg small{display:block;color:#55708b;font-size:7px;margin-bottom:4px}.chat-actions{display:flex;gap:7px;flex-wrap:wrap;margin:9px 0}.quick{border:1px solid #173654;background:#091525;border-radius:999px;color:#7895b2;padding:7px 9px;font-size:8px}.quick:hover{border-color:#2c68ad;color:#b6d3f1}.chat-form{display:grid;grid-template-columns:1fr 48px;gap:7px}.chat-form textarea{min-height:44px;max-height:110px;resize:none;border:1px solid #16304d;background:#050c16;color:#e5eff9;border-radius:11px;padding:11px;outline:none;font-size:10px}.send{border:0;border-radius:11px;background:linear-gradient(160deg,#4a89ff,#255ed3);color:#fff;font-weight:900;font-size:16px}.hint{font-size:8px;color:#506982;margin-top:7px}
+.footer{display:flex;justify-content:space-between;align-items:center;color:#47617b;font-size:8px;padding:17px 3px 3px}.footer .online{color:#52dfb0}
+.modal-wrap{position:fixed;inset:0;background:rgba(2,7,13,.75);backdrop-filter:blur(10px);display:none;align-items:center;justify-content:center;padding:18px;z-index:100}.modal-wrap.open{display:flex}.modal{width:min(680px,100%);max-height:85vh;overflow:auto;border:1px solid #234a79;border-radius:15px;background:#07111f;box-shadow:0 30px 90px rgba(0,0,0,.6);padding:17px}.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.modal-head h3{margin:0;font-size:15px}.close{border:1px solid #1b3a5f;background:#0a1728;color:#89a6c4;border-radius:8px;width:30px;height:30px}.modal-grid{display:grid;gap:8px}.detail{padding:10px;border:1px solid #122944;border-radius:10px;background:#081523}.detail b{font-size:10px}.detail small{display:block;color:#607b97;margin-top:4px;font-size:8px;line-height:1.5}
+@media(max-width:1080px){.layout{grid-template-columns:72px minmax(0,1fr)}.sidebar{padding:18px 9px}.nav button{justify-content:center;padding:12px}.nav button span:last-child,.sidebar-foot{display:none}.hero-grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(3,1fr)}.main-grid{grid-template-columns:1fr 1fr}.health-panel{grid-column:span 2}.lower{grid-template-columns:1fr}}
+@media(max-width:700px){.topbar{height:62px;padding:0 12px}.brand-mark{width:33px;height:33px}.brand-copy strong{font-size:17px}.brand-copy small{display:none}.system-chip small,.clock{display:none}.layout{grid-template-columns:1fr}.sidebar{position:sticky;top:62px;z-index:40;border-right:0;border-bottom:1px solid rgba(72,129,201,.1);padding:7px 8px}.nav{display:flex;overflow:auto}.nav button{flex:0 0 auto;padding:9px 10px}.nav button span:last-child{display:inline}.content{padding:10px 8px}.hero{grid-template-columns:1fr;min-height:430px}.hero-copy{padding:12px}.robot-scene{min-height:210px;order:-1}.metrics{grid-template-columns:1fr 1fr}.main-grid{grid-template-columns:1fr}.health-panel{grid-column:auto}.lower{grid-template-columns:1fr}.hero h1{font-size:26px}.provider{grid-template-columns:32px 1fr auto 12px}.bars{height:145px}}
 </style>
 </head>
 <body>
-<div class="command-room">
-  <div class="room-header">
-    <div class="room-brand"><span class="brand-mark">R</span><div><div class="tiny">AUTOMATON COMMAND CENTER</div><strong>RITTY</strong></div></div>
-    <div class="room-status"><span class="dot ok" id="roomDot"></span><span id="roomStatus">ONLINE</span><span class="sep">•</span><span id="roomClock">--:--:--</span></div>
-  </div>
-  <main class="ops-room" id="overview">
-    <div class="back-wall">
-      <div class="wall-topline"><span>RITTY OPERATIONS FLOOR</span><span id="wallUptime">UPTIME —</span></div>
-      <div class="wall-screen main-screen">
-        <div class="screen-top"><span>LIVE PERFORMANCE</span><span id="screenState">RUNNING</span></div>
-        <div class="screen-value" id="screenTurns">0</div>
-        <div class="screen-label">TOTAL TURNS</div>
-        <div class="screen-chart"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        <div class="screen-footer"><span><b id="screenTools">0</b> tool calls / 1h</span><span><b id="screenErrors">0</b> failures / 1h</span></div>
-      </div>
-      <div class="wall-screen side-screen left-screen"><div class="screen-title">RUNTIME</div><strong id="wRuntime">—</strong><small>LIVE STATE</small></div>
-      <div class="wall-screen side-screen right-screen"><div class="screen-title">WORKFORCE</div><strong id="wWorkers">0</strong><small>ACTIVE WORKERS</small></div>
-      <div class="wall-grid-lines"></div>
-    </div>
-    <div class="floor">
-      <div class="floor-border"></div>
-      <div class="office-shell">
-        <div class="room-back"></div>
-        <div class="room-side left"></div><div class="room-side right"></div>
-        <div class="room-window"></div>
-        <div class="ceiling-beam b1"></div><div class="ceiling-beam b2"></div><div class="ceiling-beam b3"></div>
-        <div class="office-title">RITTY OPERATIONS FLOOR</div>
-        <div class="office-subtitle">AUTONOMOUS INTELLIGENCE · LIVE CONTROL</div>
-
-        <div class="holo-ring"></div><div class="holo-core"></div>
-
-        <div class="workstation ws-left">
-          <div class="ws-monitor"><i></i><b>WORKER A</b><small id="agentA">IDLE</small></div>
-          <div class="ws-top"></div><div class="ws-desk"></div><div class="ws-chair"></div>
-          <div class="bot"><div class="bot-head"></div><div class="bot-body"></div></div>
-        </div>
-
-        <div class="workstation ws-right">
-          <div class="ws-monitor"><i></i><b>WORKER B</b><small id="agentB">IDLE</small></div>
-          <div class="ws-top"></div><div class="ws-desk"></div><div class="ws-chair"></div>
-          <div class="bot"><div class="bot-head"></div><div class="bot-body"></div></div>
-        </div>
-
-        <div class="workstation ws-back-left">
-          <div class="ws-monitor"><i></i><b>WORKER C</b><small id="agentC">IDLE</small></div>
-          <div class="ws-top"></div><div class="ws-desk"></div><div class="ws-chair"></div>
-          <div class="bot"><div class="bot-head"></div><div class="bot-body"></div></div>
-        </div>
-
-        <div class="workstation ws-back-right">
-          <div class="ws-monitor"><i></i><b>WORKER D</b><small id="agentD">IDLE</small></div>
-          <div class="ws-top"></div><div class="ws-desk"></div><div class="ws-chair"></div>
-          <div class="bot"><div class="bot-head"></div><div class="bot-body"></div></div>
-        </div>
-
-        <div class="rack left"><h4>NODE A</h4><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div></div>
-        <div class="rack right"><h4>NODE B</h4><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div><div class="rack-unit"><i></i></div></div>
-
-        <div class="data-stream"><span></span><span></span><span></span><span></span><span></span><span></span></div>
-
-        <div class="stat-puck p1">RUNTIME <b id="consoleState">ONLINE</b></div>
-        <div class="stat-puck p2">SKILLS <b id="consoleSkills">0</b> · HB <b id="consoleHB">0</b></div>
-
-        <div class="floor-caption"><span>OPERATIONS</span><span class="pill-live"><i></i> LIVE</span><span id="floorMeta">0 cycles · 0 skills</span></div>
-      </div>
-    </div>
-  </main>
-  <section class="bottom-panel">
-    <div class="panel-card activity-card"><div class="panel-heading"><strong>Recent Activity</strong><span id="activityCount">0 events</span></div><div id="activityFeed" class="feed"></div></div>
-    <div class="panel-card chat-card">
-      <div class="panel-heading"><strong>Talk to RITTY</strong><span>CREATOR COMMAND CHANNEL</span></div>
-      <div id="chatFeed" class="chat-feed"><div class="chat-empty">Mande uma tarefa para o RITTY.</div></div>
-      <form id="chatForm" class="chat-form"><textarea id="chatInput" maxlength="64000" rows="1" placeholder="Digite uma tarefa para o RITTY…"></textarea><button id="chatSend" type="submit">Enviar <b>↗</b></button></form>
-      <div id="chatHint" class="chat-hint">A tarefa entra na fila do runtime.</div>
-    </div>
-  </section>
-  <section class="mobile-metrics"><div><span>STATE</span><b id="mState">—</b></div><div><span>TURNS</span><b id="mTurns">0</b></div><div><span>SKILLS</span><b id="mSkills">0</b></div><div><span>UPTIME</span><b id="mUptime">—</b></div></section>
+<div class="app">
+<header class="topbar">
+<div class="brand"><div class="brand-mark">R</div><div class="brand-copy"><small>AUTOMATON</small><strong>RITTY</strong></div></div>
+<div class="system-chip"><span class="live-dot" id="topDot"></span><div><div class="live" id="topState">Sistema Online</div><small id="topSub">RITTY está operando normalmente</small></div></div>
+<div class="header-right"><div class="clock"><div id="dateNow">--</div><div id="clockNow">--:--</div></div><button class="icon-btn" id="themeBtn" aria-label="Alternar visual">◐</button></div>
+</header>
+<div class="layout">
+<aside class="sidebar">
+<nav class="nav">
+<button class="active" data-panel="dashboard"><span class="ico">⌂</span><span>Dashboard</span></button>
+<button data-panel="cycles"><span class="ico">◷</span><span>Ciclos</span></button>
+<button data-panel="tasks"><span class="ico">▤</span><span>Tarefas</span></button>
+<button data-panel="workers"><span class="ico">♙</span><span>Workers</span></button>
+<button data-panel="tools"><span class="ico">⚒</span><span>Ferramentas</span></button>
+<button data-panel="skills"><span class="ico">◇</span><span>Habilidades</span></button>
+<button data-panel="logs"><span class="ico">▣</span><span>Logs</span></button>
+<button data-panel="settings"><span class="ico">⚙</span><span>Configurações</span></button>
+</nav>
+<div class="sidebar-foot"><b>AUTOMATON</b><br/>MORE THAN AI<br/><br/>RITTY <span id="versionSide">—</span></div>
+</aside>
+<main class="content">
+<section class="hero-grid">
+<div class="hero">
+<div class="hero-copy"><div class="hero-kicker">RITTY</div><h1>Agente Autônomo de <span>Criação de Valor</span></h1><div class="hero-sub">Sistema autônomo conectado ao runtime local, memória persistente, ferramentas, workers e política de execução.</div><div class="hero-state"><span class="live-dot"></span><div><div id="heroState">ONLINE</div><small id="heroDetail">Operando com controle de ciclo e proteção de quota.</small></div></div></div>
+<div class="robot-scene"><div class="robot-floor"></div><div class="robot"><div class="head"><div class="visor"><i class="eye"></i><i class="eye"></i></div><i class="ear l"></i><i class="ear r"></i></div><div class="body"><div class="core"></div></div><i class="arm l"></i><i class="arm r"></i><i class="leg l"></i><i class="leg r"></i></div></div>
 </div>
+<section class="providers">
+<div class="panel-title"><strong>Provedores de IA</strong><span>LIVE</span></div>
+<div class="provider" data-provider="groq"><div class="provider-icon groq">G</div><div><b>Groq</b><small id="groqMeta">—</small></div><div class="provider-status" id="groqStatus">—</div><div class="provider-arrow">›</div></div>
+<div class="provider" data-provider="gemini"><div class="provider-icon gemini">✦</div><div><b>Gemini</b><small id="geminiMeta">—</small></div><div class="provider-status" id="geminiStatus">—</div><div class="provider-arrow">›</div></div>
+<div class="provider" data-provider="fallback"><div class="provider-icon fallback">◌</div><div><b>Fallback</b><small id="fallbackMeta">—</small></div><div class="provider-status" id="fallbackStatus">—</div><div class="provider-arrow">›</div></div>
+</section>
+</section>
+<section class="metrics">
+<div class="metric"><div class="mi">◔</div><h4>Ciclos Totais</h4><strong id="mTurns">0</strong><small>Histórico mantido</small></div>
+<div class="metric"><div class="mi">↻</div><h4>Ciclo Atual</h4><strong id="mCycle">—</strong><small id="mCycleSub">—</small></div>
+<div class="metric"><div class="mi">✓</div><h4>Tarefas</h4><strong id="mTasks">0</strong><small id="mTasksSub">Pendentes</small></div>
+<div class="metric"><div class="mi">♙</div><h4>Workers</h4><strong id="mWorkers">0</strong><small>Ativos</small></div>
+<div class="metric"><div class="mi">◷</div><h4>Uptime</h4><strong id="mUptime">—</strong><small>Desde o último boot</small></div>
+</section>
+<section class="main-grid">
+<div class="panel"><div class="panel-title"><strong>Atividade Recente</strong><span id="activityCount">0 eventos</span></div><div class="feed" id="activityFeed"></div></div>
+<div class="panel"><div class="panel-title"><strong>Uso de Tokens (Hoje)</strong><span id="tokenToday">0</span></div><div class="usage-line"><div class="usage-row"><span>Groq</span><i><b class="red" id="groqBar"></b></i><em id="groqPct">0%</em></div><div class="usage-row"><span>Gemini</span><i><b class="pink" id="geminiBar"></b></i><em id="geminiPct">0%</em></div><div class="usage-row"><span>Outros</span><i><b id="otherBar"></b></i><em id="otherPct">0%</em></div></div><div class="bars" id="tokenBars"></div></div>
+<div class="panel health-panel"><div class="panel-title"><strong>Sistema</strong><span>HEALTH</span></div><div class="health" id="healthList"></div><div class="backoff"><span style="font-size:8px;color:#607b96">BACKOFF GLOBAL</span><strong id="backoffState">—</strong><small id="backoffMeta">—</small></div></div>
+</section>
+<section class="lower">
+<div class="logs"><div class="panel-title"><strong>Logs do Sistema</strong><span id="logCount">—</span></div><div class="log-list" id="logList"></div></div>
+<div class="chat"><div class="panel-title"><strong>Chat com RITTY</strong><span>CREATOR CHANNEL ↗</span></div><div class="chat-feed" id="chatFeed"><div class="chat-empty">Mande uma tarefa para o RITTY.</div></div><div class="chat-actions"><button class="quick" data-quick="status">Status do sistema</button><button class="quick" data-quick="task">Criar tarefa</button><button class="quick" data-quick="wake">Acordar RITTY</button><button class="quick" data-quick="tasks">Ver tarefas</button></div><form id="chatForm" class="chat-form"><textarea id="chatInput" maxlength="64000" rows="1" placeholder="Digite um comando para o RITTY..."></textarea><button id="chatSend" class="send" type="submit">➤</button></form><div class="hint" id="chatHint">A tarefa entra na fila do runtime.</div></div>
+</section>
+<footer class="footer"><span>RITTY <b id="footerVersion">—</b> &nbsp;|&nbsp; Automaton</span><span>Disciplina hoje. Liberdade amanhã.</span><span class="online">● Online</span></footer>
+</main>
+</div>
+</div>
+<div class="modal-wrap" id="modalWrap"><div class="modal"><div class="modal-head"><h3 id="modalTitle">RITTY</h3><button class="close" id="modalClose">×</button></div><div class="modal-grid" id="modalBody"></div></div></div>
 <script>
+let lastData=null;
 const $=id=>document.getElementById(id);
-const esc=v=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const esc=v=>String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 function fmtTime(v){try{return new Date(v).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});}catch(e){return "—";}}
-function fmtUp(sec){if(sec==null)return "—";let s=Math.floor(sec),d=Math.floor(s/86400);s%=86400;let h=Math.floor(s/3600);s%=3600;let m=Math.floor(s/60);return d?d+"d "+h+"h":h+"h "+m+"m";}
-function renderChat(d){
-  const turns=d.chatTurns||[];
-  $("chatFeed").innerHTML=turns.length?turns.map(t=>'<div class="chat-item"><div class="chat-meta"><span>'+esc(t.inputSource||"RITTY")+'</span><time>'+esc(fmtTime(t.timestamp))+'</time></div><div class="chat-user">'+esc(t.input||"")+'</div><div class="chat-agent"><span class="agent-dot"></span>'+esc(t.response||"RITTY processando…")+'</div></div>').join(""):'<div class="chat-empty">Mande uma tarefa para o RITTY.</div>';
-  $("chatFeed").scrollTop=$("chatFeed").scrollHeight;
-}
-async function load(){
-  try{
-    const r=await fetch("/api/dashboard",{cache:"no-store"}); if(!r.ok) throw Error();
-    const d=await r.json();
-    $("roomStatus").textContent=d.connected?"ONLINE":"OFFLINE"; $("roomClock").textContent=new Date().toLocaleTimeString("pt-BR");
-    $("wallUptime").textContent="UPTIME "+fmtUp(d.runtime.uptimeSeconds);
-    $("screenState").textContent=String(d.runtime.state).toUpperCase(); $("screenTurns").textContent=d.metrics.turnsTotal; $("screenTools").textContent=d.metrics.toolCalls1h; $("screenErrors").textContent=d.metrics.errors1h;
-    $("wRuntime").textContent=String(d.runtime.state).toUpperCase(); $("wWorkers").textContent=d.metrics.childrenAlive; $("consoleState").textContent=String(d.runtime.state).toUpperCase(); $("consoleSkills").textContent=d.metrics.skills; $("consoleHB").textContent=d.metrics.heartbeatsActive;
-    $("floorMeta").textContent=d.metrics.turnsTotal+" cycles · "+d.metrics.skills+" skills";
-    $("mState").textContent=d.runtime.state; $("mTurns").textContent=d.metrics.turnsTotal; $("mSkills").textContent=d.metrics.skills; $("mUptime").textContent=fmtUp(d.runtime.uptimeSeconds);
-    const children=d.children||[]; ["A","B","C","D"].forEach((x,i)=>{const c=children[i];$("agent"+x).textContent=c?(c.status||"RUNNING").toUpperCase():"IDLE";});
-    const acts=(d.recentTurns||[]).slice(0,8); $("activityCount").textContent=acts.length+" events";
-    $("activityFeed").innerHTML=acts.length?acts.map(t=>'<div class="feed-row"><div class="feed-dot '+(t.state==="error"?"bad":"")+'"></div><div><b>Turn '+esc(t.id.slice(0,8))+'</b><small>'+esc(fmtTime(t.timestamp))+' · '+esc(t.state)+'</small></div><strong>'+esc(t.toolCalls||0)+' tools</strong></div>').join(""):'<div class="chat-empty">Sem atividade recente.</div>';
-    renderChat(d);
-    if(d.chatPending && d.chatPending.status === "failed"){ $("chatHint").textContent="RITTY não conseguiu executar esta tarefa. A tentativa máxima foi atingida."; }
-    else if(d.chatPending && d.chatPending.status === "received"){ $("chatHint").textContent="Tarefa na fila — aguardando a próxima execução do RITTY."; }
-    else if(d.chatPending && d.chatPending.status === "in_progress"){ $("chatHint").textContent="RITTY está processando esta tarefa agora…"; }
-    else if(d.chatPending && d.chatPending.status === "processed"){ $("chatHint").textContent="Tarefa processada pelo RITTY."; }
-  }catch(e){$("roomStatus").textContent="OFFLINE";}
-}
-$("chatForm").addEventListener("submit",async e=>{
-  e.preventDefault(); const input=$("chatInput"); const message=input.value.trim(); if(!message)return;
-  $("chatSend").disabled=true; $("chatHint").textContent="Enviando para o runtime…";
-  try{
-    const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message})});
-    const d=await r.json(); if(!r.ok) throw Error(d.error||"Falha ao enviar");
-    input.value=""; $("chatHint").textContent="Enviado ao runtime. Acompanhe o estado abaixo."; await load();
-  }catch(err){$("chatHint").textContent=String(err.message||err);}
-  finally{$("chatSend").disabled=false;input.focus();}
-});
-load(); setInterval(load,5000);
+function fmtDate(v){try{return new Date(v).toLocaleDateString("pt-BR",{day:"2-digit",month:"short",year:"numeric"});}catch(e){return "—";}}
+function fmtUp(sec){if(sec==null)return "—";let s=Math.max(0,Math.floor(sec)),d=Math.floor(s/86400);s%=86400;let h=Math.floor(s/3600);s%=3600;let m=Math.floor(s/60);return d?d+"d "+h+"h":h?h+"h "+m+"m":m+"m";}
+function pct(v){return Math.max(0,Math.min(100,Number(v)||0));}
+function providerClass(status){return status==="quota_exhausted"||status==="unavailable"?"bad":"";}
+function providerLabel(status){return status==="quota_exhausted"?"Quota esgotada":status==="configured"?"Pronto":status==="unavailable"?"Indisponível":"Aguardando";}
+function renderBars(history){const max=Math.max(1,...(history||[]).map(x=>Number(x.tokens)||0));$("tokenBars").innerHTML=(history||[]).map(x=>'<div class="bar" style="height:'+Math.max(8,(Number(x.tokens)||0)/max*100)+'%"><span>'+esc(x.label)+'</span></div>').join("")||'<div style="color:#506982;font-size:9px">Sem dados.</div>';}
+function renderChat(d){const turns=d.chatTurns||[];$("chatFeed").innerHTML=turns.length?turns.slice(-14).map(t=>'<div class="msg user"><small>'+esc(t.inputSource||"creator")+' · '+esc(fmtTime(t.timestamp))+'</small>'+esc(t.input||"")+'</div><div class="msg agent"><small>RITTY</small>'+esc(t.response||"RITTY processando...")+'</div>').join(""):'<div class="chat-empty">Mande uma tarefa para o RITTY.</div>';$("chatFeed").scrollTop=$("chatFeed").scrollHeight;}
+function renderHealth(d){const h=d.system||{};const rows=[["Railway",h.runtimeOk,"Online"],["Banco de Dados",h.dbOk,"SQLite"],["Volume Persistente",h.persistenceOk,"Ativo"],["Rede / APIs",h.networkHint,"Conectada"],["Memória",h.memoryMb+" MB","Uso do processo"]];$("healthList").innerHTML=rows.map(r=>'<div class="health-row"><span>'+esc(r[0])+'</span><b class="'+(r[1]===false?"warn":"")+'">'+esc(String(r[2]||r[1]))+'</b></div>').join("");}
+function openModal(title,html){$("modalTitle").textContent=title;$("modalBody").innerHTML=html;$("modalWrap").classList.add("open");}
+function renderPanel(kind){const d=lastData||{};if(kind==="dashboard"){window.scrollTo({top:0,behavior:"smooth"});return;}if(kind==="cycles"){const turns=d.recentTurns||[];openModal("Ciclos",turns.map((t,i)=>'<div class="detail"><b>#'+(i+1)+' · '+esc(t.state)+'</b><small>'+esc(fmtTime(t.timestamp))+' · '+esc(t.toolCalls)+' ferramentas · '+esc(t.tokens||0)+' tokens · ID '+esc(t.id)+'</small></div>').join("")||'<div class="detail">Sem ciclos registrados.</div>');}else if(kind==="tasks"){const goals=d.goals||[];const tasks=d.tasks||[];openModal("Tarefas",goals.concat(tasks).slice(0,50).map(x=>'<div class="detail"><b>'+esc(x.title||x.name||"Tarefa")+'</b><small>'+esc(x.status||"")+(x.priority!=null?" · prioridade "+esc(x.priority):"")+(x.assignedTo?" · "+esc(x.assignedTo):"")+'</small></div>').join("")||'<div class="detail">Nenhuma tarefa encontrada.</div>');}else if(kind==="workers"){openModal("Workers",(d.children||[]).map(c=>'<div class="detail"><b>'+esc(c.name)+'</b><small>Status: '+esc(c.status)+'</small></div>').join("")||'<div class="detail"><b>0 workers persistidos</b><small>O pool local aparece no estado das tarefas quando estiver executando.</small></div>');}else if(kind==="tools"){openModal("Ferramentas",(d.recentTools||[]).map(t=>'<div class="detail"><b>'+esc(t.name)+'</b><small>'+esc(t.timestamp)+' · '+esc(t.durationMs==null?"—":t.durationMs+"ms")+(t.failed?" · FALHA":"")+'</small></div>').join("")||'<div class="detail">Sem chamadas recentes.</div>');}else if(kind==="skills"){openModal("Habilidades",(d.skills||[]).map(s=>'<div class="detail"><b>'+esc(s.name)+'</b><small>'+esc(s.description||"")+'</small></div>').join("")||'<div class="detail">Nenhuma habilidade ativa.</div>');}else if(kind==="logs"){openModal("Logs",(d.systemLogs||[]).map(l=>'<div class="detail"><b>'+esc(l.level)+' · '+esc(l.timestamp)+'</b><small>'+esc(l.message)+'</small></div>').join("")||'<div class="detail">Sem logs recentes.</div>');}else if(kind==="settings"){openModal("Configurações",'<div class="detail"><b>Modelo</b><small>'+esc(d.identity&&d.identity.model)+'</small></div><div class="detail"><b>Versão</b><small>'+esc(d.identity&&d.identity.version)+'</small></div><div class="detail"><b>Modo</b><small>'+esc(d.system&&d.system.mode)+'</small></div><div class="detail"><b>Backoff</b><small>'+esc(d.backoffUntil||"Nenhum")+'</small></div>');}}
+async function wake(){$("chatHint").textContent="Tentando acordar o RITTY...";try{const r=await fetch("/api/wake",{method:"POST"});const x=await r.json();$("chatHint").textContent=x.message||"Solicitação enviada.";await load();}catch(e){$("chatHint").textContent="Não foi possível acordar o runtime.";}}
+async function load(){try{const r=await fetch("/api/dashboard",{cache:"no-store"});if(!r.ok)throw Error();const d=await r.json();lastData=d;const online=!!d.connected;$("topState").textContent=d.runtime&&d.runtime.state==="sleeping"?"Sistema Online · Pausado":"Sistema Online";$("topSub").textContent=d.runtime&&d.runtime.state==="sleeping"?"RITTY está em modo de pausa":"RITTY está operando normalmente";$("topDot").style.background=online?"#1ee59d":"#ff5c6c";$("heroState").textContent=String((d.runtime&&d.runtime.state)||"unknown").toUpperCase();$("heroDetail").textContent=d.backoffUntil?"Proteção de quota ativa. Nenhum novo ciclo será iniciado.":"Operando com controle de ciclo e proteção de quota.";$("mTurns").textContent=(d.metrics&&d.metrics.turnsTotal)||0;$("mCycle").textContent=d.runtime&&d.runtime.state==="sleeping"?"Dormindo":"Ativo";$("mCycleSub").textContent=d.backoffUntil?"Retoma após "+fmtDate(d.backoffUntil)+" · "+fmtTime(d.backoffUntil):"Executando normalmente";const ts=d.taskSummary||{};$("mTasks").textContent=(ts.pending||0)+(ts.running||0)+(ts.assigned||0);$("mTasksSub").textContent=(ts.running||0)+" em execução · "+(ts.pending||0)+" pendentes";$("mWorkers").textContent=(d.metrics&&d.metrics.childrenAlive)||0;$("mUptime").textContent=fmtUp(d.runtime&&d.runtime.uptimeSeconds);$("versionSide").textContent=d.identity&&d.identity.version?"v"+d.identity.version:"—";$("footerVersion").textContent=d.identity&&d.identity.version?"v"+d.identity.version:"—";const p=d.providers||[];for(const x of p){const id=x.id==="groq"?"groq":x.id==="gemini"?"gemini":"fallback";$(id+"Meta").textContent=x.meta||"—";$(id+"Status").textContent=providerLabel(x.status);$(id+"Status").className="provider-status "+providerClass(x.status);}const toks=d.tokens||{};$("tokenToday").textContent=(toks.today||0).toLocaleString("pt-BR")+" tokens";$("groqBar").style.width=pct(toks.groqPct)+"%";$("groqPct").textContent=pct(toks.groqPct)+"%";$("geminiBar").style.width=pct(toks.geminiPct)+"%";$("geminiPct").textContent=pct(toks.geminiPct)+"%";$("otherBar").style.width=pct(toks.otherPct)+"%";$("otherPct").textContent=pct(toks.otherPct)+"%";renderBars(toks.history||[]);const acts=d.recentTurns||[];$("activityCount").textContent=acts.length+" eventos";$("activityFeed").innerHTML=acts.slice(0,8).map(t=>'<div class="feed-row"><span class="fdot '+(t.state==="error"?"bad":"")+'"></span><div><b>Turn '+esc(t.id.slice(0,8))+'</b><small>'+esc(fmtTime(t.timestamp))+' · '+esc(t.state)+'</small></div><em>'+esc(t.toolCalls||0)+' tools</em></div>').join("")||'<div class="chat-empty">Sem atividade recente.</div>';renderHealth(d);renderChat(d);$("backoffState").textContent=d.backoffUntil?"Ativo":"Inativo";$("backoffState").style.color=d.backoffUntil?"#ff9a66":"#54e3ae";$("backoffMeta").textContent=d.backoffUntil?"Próximo ciclo permitido: "+fmtTime(d.backoffUntil)+" · "+fmtDate(d.backoffUntil):"Nenhum bloqueio de quota registrado";const logs=d.systemLogs||[];$("logCount").textContent=logs.length+" registros";$("logList").innerHTML=logs.slice(0,32).map(l=>'<div class="log-line"><span class="log-time">'+esc(fmtTime(l.timestamp))+'</span><span class="log-level '+String(l.level||"info").toLowerCase()+'">['+esc(l.level)+']</span><span class="log-msg">'+esc(l.message)+'</span></div>').join("")||"Sem logs.";}catch(e){$("topState").textContent="Sistema Offline";$("topSub").textContent="Dashboard sem acesso ao runtime";$("topDot").style.background="#ff5c6c";}}
+document.querySelectorAll(".nav button").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".nav button").forEach(x=>x.classList.remove("active"));b.classList.add("active");renderPanel(b.dataset.panel);}));
+document.querySelectorAll(".provider").forEach(b=>b.addEventListener("click",()=>{const id=b.dataset.provider;const x=(lastData&&lastData.providers||[]).find(p=>p.id===id);openModal(id==="groq"?"Groq":id==="gemini"?"Gemini":"Fallback",'<div class="detail"><b>Status</b><small>'+esc(x?providerLabel(x.status):"—")+'</small></div><div class="detail"><b>Detalhes</b><small>'+esc(x&&x.meta||"Sem dados.")+'</small></div>');}));
+document.querySelectorAll(".quick").forEach(b=>b.addEventListener("click",async()=>{const k=b.dataset.quick;if(k==="wake"){await wake();return;}if(k==="tasks"){renderPanel("tasks");return;}if(k==="status"){$("chatInput").value="Mostre o status completo do RITTY, sem executar operações financeiras.";$("chatInput").focus();return;}if(k==="task"){$("chatInput").value="Crie uma tarefa interna de diagnóstico do sistema e aguarde execução.";$("chatInput").focus();return;}}));
+$("chatForm").addEventListener("submit",async e=>{e.preventDefault();const input=$("chatInput");const message=input.value.trim();if(!message)return;$("chatSend").disabled=true;$("chatHint").textContent="Enviando para o runtime...";try{const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message})});const x=await r.json();if(!r.ok)throw Error(x.error||"Falha ao enviar");input.value="";$("chatHint").textContent="Enviado. O runtime processará na próxima execução.";await load();}catch(err){$("chatHint").textContent=String(err&&err.message||err);}finally{$("chatSend").disabled=false;input.focus();}});
+$("themeBtn").addEventListener("click",()=>{document.documentElement.classList.toggle("alt");localStorage.setItem("ritty-alt",document.documentElement.classList.contains("alt")?"1":"0");});
+$("modalClose").addEventListener("click",()=>$("modalWrap").classList.remove("open"));$("modalWrap").addEventListener("click",e=>{if(e.target===$("modalWrap"))$("modalWrap").classList.remove("open")});
+setInterval(()=>{const n=new Date();$("clockNow").textContent=n.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});$("dateNow").textContent=fmtDate(n);},1000);
+load();setInterval(load,5000);
 </script>
 </body></html>`;
 
@@ -418,6 +203,83 @@ function buildSnapshot(db: AutomatonDatabase, config: AutomatonConfig) {
     };
   });
 
+  const rawProviderErrors = db.raw.prepare(
+    "SELECT tc.error,t.timestamp FROM tool_calls tc JOIN turns t ON t.id=tc.turn_id WHERE tc.error IS NOT NULL ORDER BY t.timestamp DESC LIMIT 120",
+  ).all() as any[];
+  const providerErrorText = rawProviderErrors.map((r: any) => String(r.error ?? "")).join("\n");
+  const quotaPattern = /429|rate.?limit|quota|resource.?exhausted|tokens per day|tokens per minute|tpd|all providers failed|no providers available/i;
+  const groqExhausted = Boolean(process.env.GROQ_API_KEY) && /groq/i.test(providerErrorText) && quotaPattern.test(providerErrorText);
+  const geminiExhausted = Boolean(process.env.GEMINI_API_KEY) && /gemini/i.test(providerErrorText) && quotaPattern.test(providerErrorText);
+
+  const tokenRows = db.raw.prepare(
+    "SELECT timestamp, token_usage FROM turns WHERE timestamp >= datetime('now','-7 days') ORDER BY timestamp ASC LIMIT 1200",
+  ).all() as any[];
+  const historyMap: Record<string, number> = {};
+  let tokensToday = 0;
+  for (const row of tokenRows) {
+    const ts = String(row.timestamp ?? "");
+    const key = ts.slice(0, 10) || "unknown";
+    const tokens = jsonNumber(row.token_usage);
+    historyMap[key] = (historyMap[key] ?? 0) + tokens;
+    if (key === now.slice(0, 10)) tokensToday += tokens;
+  }
+  const history = Object.entries(historyMap).slice(-7).map(([key, tokens]) => ({
+    label: key.slice(5).replace("-", "/"),
+    tokens,
+  }));
+  const groqDailyLimit = Number(process.env.GROQ_DAILY_TOKENS || 200000);
+  const geminiDailyLimit = Number(process.env.GEMINI_DAILY_REQUESTS || 20);
+  const providerModels = {
+    groq: process.env.RITTY_MODEL || "openai/gpt-oss-120b",
+    gemini: process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.8-flash",
+  };
+  const providerList = [
+    {
+      id: "groq",
+      status: !process.env.GROQ_API_KEY ? "unavailable" : groqExhausted ? "quota_exhausted" : "configured",
+      meta: !process.env.GROQ_API_KEY ? "Chave não configurada" : (groqExhausted ? "Quota/provedor bloqueado" : providerModels.groq),
+    },
+    {
+      id: "gemini",
+      status: !process.env.GEMINI_API_KEY ? "unavailable" : geminiExhausted ? "quota_exhausted" : "configured",
+      meta: !process.env.GEMINI_API_KEY ? "Chave não configurada" : (geminiExhausted ? "Quota/provedor bloqueado" : providerModels.gemini),
+    },
+    {
+      id: "fallback",
+      status: groqExhausted && geminiExhausted ? "quota_exhausted" : "configured",
+      meta: groqExhausted && geminiExhausted ? "Aguardando reset automático" : "Ativado automaticamente",
+    },
+  ];
+  const groqPct = groqExhausted ? 100 : Math.min(100, Math.round(tokensToday / Math.max(1, groqDailyLimit) * 100));
+  const geminiPct = geminiExhausted ? 100 : Math.min(100, Math.round(tokensToday / Math.max(1, geminiDailyLimit) * 100));
+  const otherPct = Math.max(0, 100 - Math.max(groqPct, Math.min(100, geminiPct)));
+
+  const backoffUntil = db.getKV("inference_backoff_until");
+  const sleepUntil = db.getKV("sleep_until");
+  const dbPath = (process.env.RITTY_DB_PATH || config.dbPath || "").replace(/^~\//, (process.env.HOME || "") + "/");
+  const dbOk = Boolean(dbPath && fs.existsSync(dbPath));
+  const persistenceOk = Boolean((process.env.HOME || "") && fs.existsSync((process.env.HOME || "") + "/.automaton"));
+  const memoryMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
+  const taskSummary: Record<string, number> = { pending: 0, assigned: 0, running: 0, completed: 0, failed: 0, cancelled: 0 };
+  const tasks = tableExists(db, "task_graph")
+    ? db.raw.prepare("SELECT id,title,status,assigned_to as assignedTo,priority,created_at as createdAt FROM task_graph ORDER BY created_at DESC LIMIT 40").all() as any[]
+    : [];
+  for (const t of tasks) taskSummary[String(t.status ?? "pending")] = (taskSummary[String(t.status ?? "pending")] ?? 0) + 1;
+  const goals = tableExists(db, "goals")
+    ? db.raw.prepare("SELECT id,title,status,created_at as createdAt FROM goals ORDER BY created_at DESC LIMIT 24").all() as any[]
+    : [];
+  const systemLogs: Array<{timestamp:string;level:string;message:string}> = [];
+  const bootAt = db.getKV("runtime_last_boot");
+  if (bootAt) systemLogs.push({ timestamp: bootAt, level: "INFO", message: "Runtime inicializado com banco persistente." });
+  for (const r of rawProviderErrors.slice(0, 8)) {
+    systemLogs.push({ timestamp: String(r.timestamp ?? now), level: "ERROR", message: String(r.error ?? "Falha do provedor").slice(0, 240) });
+  }
+  if (backoffUntil) systemLogs.unshift({ timestamp: now, level: "WARN", message: "Backoff global ativo até " + backoffUntil + "." });
+  if (sleepUntil) systemLogs.unshift({ timestamp: now, level: "WARN", message: "Runtime em pausa até " + sleepUntil + "." });
+  for (const t of recentTurns.slice(0, 8)) {
+    systemLogs.push({ timestamp: t.timestamp, level: t.state === "error" ? "ERROR" : "INFO", message: "Turn " + t.id.slice(0, 8) + " · " + t.state + " · " + t.toolCalls + " tools" });
+  }
+
   const lastTurn = recentTurns[0]?.timestamp ?? null;
   const childrenAlive = children.filter((c) => !["dead","failed","cleaned_up"].includes(c.status)).length;
   const heartbeatsActive = heartbeats.filter((h) => h.enabled).length;
@@ -489,6 +351,15 @@ function buildSnapshot(db: AutomatonDatabase, config: AutomatonConfig) {
         }
       })(),
     })).reverse(),
+    providers: providerList,
+    tokens: { today: tokensToday, groqPct, geminiPct, otherPct, history, dailyGroqLimit: groqDailyLimit, dailyGeminiLimit: geminiDailyLimit },
+    system: { runtimeOk: true, dbOk, persistenceOk, networkHint: providerList.some((p) => p.status === "configured"), memoryMb, mode: process.env.RITTY_MODE || "standard" },
+    taskSummary,
+    tasks,
+    goals,
+    systemLogs,
+    backoffUntil: backoffUntil || null,
+    sleepUntil: sleepUntil || null,
     chatPending: (() => {
       const row = db.raw.prepare("SELECT id,content,status,received_at,retry_count,max_retries FROM inbox_messages WHERE from_address = ? ORDER BY received_at DESC LIMIT 1").get("dashboard://creator") as any;
       const active = db.getKV("creator_task_active");
@@ -561,6 +432,27 @@ export function startDashboardServer(options: { db: AutomatonDatabase; config: A
           res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify({ error: "chat_unavailable" }));
         }
       });
+      return;
+    }
+
+    if (pathname === "/api/wake" && req.method === "POST") {
+      try {
+        const backoff = db.getKV("inference_backoff_until");
+        const ts = backoff ? Date.parse(backoff) : NaN;
+        if (Number.isFinite(ts) && ts > Date.now()) {
+          res.writeHead(409, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+          res.end(JSON.stringify({ ok: false, message: "Backoff ainda ativo até " + backoff + ". O runtime não será forçado a consumir quota." }));
+          return;
+        }
+        db.deleteKV("sleep_until");
+        db.setAgentState("waking");
+        db.raw.prepare("INSERT INTO wake_events (source, reason, payload) VALUES (?, ?, ?)").run("dashboard", "manual wake", JSON.stringify({}));
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ ok: true, message: "RITTY acordado. O próximo ciclo disponível será processado pelo runtime." }));
+      } catch {
+        res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: false, message: "Não foi possível acordar o runtime." }));
+      }
       return;
     }
 
