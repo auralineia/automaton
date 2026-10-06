@@ -903,7 +903,7 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
     },
     {
       name: "work_execute",
-      description: "Execute a durable work bundle in one call: write files into the active work workspace, run one validation command, register artifacts, checkpoint the result, and complete the work only when the test passes. Prefer this for small deterministic deliverables.",
+      description: "Execute a durable work bundle in one call. For website requests, prefer a compact site spec instead of inlining huge HTML/CSS/JS files; RITTY will generate the files, run the validation, register artifacts, and complete the active work only when the test passes.",
       category: "vm",
       riskLevel: "caution",
       parameters: {
@@ -923,11 +923,24 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
               required: ["path", "content"],
             },
           },
+          site: {
+            type: "object",
+            description: "Compact static-site specification. Use this instead of sending large inline files.",
+            properties: {
+              brand: { type: "string" },
+              category: { type: "string" },
+              tagline: { type: "string" },
+              primaryColor: { type: "string" },
+              accentColor: { type: "string" },
+              accent2Color: { type: "string" },
+              products: { type: "array", items: { type: "string" } },
+            },
+          },
           test_command: { type: "string" },
           artifacts: { type: "array", items: { type: "string" } },
           summary: { type: "string" },
         },
-        required: ["files", "test_command"],
+        required: ["test_command"],
       },
       execute: async (args, ctx) => {
         const { createWork, getWork, executeWorkBundle } = await import("../orchestration/work-engine.js");
@@ -1027,13 +1040,146 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
           ctx.db.setKV("creator_bundle_attempted", "1");
         }
 
+        let bundleFiles = Array.isArray(args.files)
+          ? (args.files as Array<{ path: string; content: string }>)
+          : [];
+
+        // Compact website mode: let the runtime generate the actual files so
+        // the model never has to squeeze a massive JSON-escaped HTML/CSS/JS
+        // payload into one tool call (a recurring Groq tool-call failure mode).
+        if (bundleFiles.length === 0 && args.site && typeof args.site === "object") {
+          const site = args.site as Record<string, unknown>;
+          const brand = String(site.brand || "IGAPPLE");
+          const category = String(site.category || "Loja premium de iPhones");
+          const tagline = String(site.tagline || "Tecnologia premium. Escolha sem complicação.");
+          const primary = String(site.primaryColor || "#0a0a0b");
+          const accent = String(site.accentColor || "#f2d200");
+          const accent2 = String(site.accent2Color || "#a95f1a");
+          const products = Array.isArray(site.products) && site.products.length > 0
+            ? site.products.map((value) => String(value)).slice(0, 6)
+            : ["iPhone 16 Pro", "iPhone 16", "iPhone 15"];
+
+          const productCards = products.map((product, index) => {
+            const price = ["R$ 7.990", "R$ 6.990", "R$ 5.990", "R$ 5.490", "R$ 4.990", "R$ 4.490"][index] || "Consulte";
+            return [
+              '<article class="product-card">',
+              '<div class="product-art" aria-hidden="true"><span>iPhone</span></div>',
+              '<div class="product-copy">',
+              '<span class="eyebrow">Disponível</span>',
+              '<h3>' + product.replace(/[&<>]/g, "") + '</h3>',
+              '<p>Visual premium, performance de sobra e compra segura.</p>',
+              '<div class="product-meta"><strong>' + price + '</strong><button class="outline-btn js-scroll" type="button" data-target="#contato">Tenho interesse</button></div>',
+              '</div>',
+              '</article>',
+            ].join("");
+          }).join("");
+
+          const indexHtml = `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="${brand} — ${category}.">
+  <title>${brand} — ${category}</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="script.js"></script>
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="${brand}">
+      <span class="brand-mark">${brand.slice(0, 1)}</span><span>${brand}</span>
+    </a>
+    <nav class="desktop-nav">
+      <a href="#produtos">Produtos</a>
+      <a href="#diferenciais">Diferenciais</a>
+      <a href="#contato">Contato</a>
+    </nav>
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="mobile-nav">Menu</button>
+  </header>
+  <div id="mobile-nav" class="mobile-nav">
+    <a href="#produtos">Produtos</a><a href="#diferenciais">Diferenciais</a><a href="#contato">Contato</a>
+  </div>
+
+  <main id="top">
+    <section class="hero section">
+      <div class="hero-copy">
+        <span class="eyebrow">${category}</span>
+        <h1>${tagline}</h1>
+        <p>Encontre o iPhone certo para o seu momento, com atendimento próximo, curadoria de modelos e uma experiência de compra premium.</p>
+        <div class="hero-actions">
+          <a class="primary-btn" href="#produtos">Ver modelos</a>
+          <a class="text-link" href="#contato">Falar com a equipe <span>↗</span></a>
+        </div>
+        <div class="trust-row"><span>✓ Atendimento humano</span><span>✓ Curadoria de modelos</span><span>✓ Compra sem enrolação</span></div>
+      </div>
+      <div class="hero-visual" aria-hidden="true">
+        <div class="orb orb-a"></div><div class="orb orb-b"></div>
+        <div class="phone">
+          <div class="phone-camera"></div><div class="phone-screen"><span>${brand}</span><strong>PRO</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="produtos" class="section product-section">
+      <div class="section-head"><div><span class="eyebrow">Escolha o seu</span><h2>Modelos em destaque</h2></div><span class="section-note">Atualizado para uma experiência de vitrine premium.</span></div>
+      <div class="product-grid">${productCards}</div>
+    </section>
+
+    <section id="diferenciais" class="section feature-section">
+      <div class="section-head"><div><span class="eyebrow">Por que ${brand}</span><h2>Mais do que vender um aparelho.</h2></div></div>
+      <div class="feature-grid">
+        <article class="feature-card"><span>01</span><h3>Curadoria</h3><p>Modelos apresentados de forma clara para você decidir pelo que realmente faz sentido.</p></article>
+        <article class="feature-card"><span>02</span><h3>Atendimento</h3><p>Conversa direta, sem roteiro genérico e sem pressão para fechar.</p></article>
+        <article class="feature-card"><span>03</span><h3>Experiência</h3><p>Uma vitrine moderna para uma marca que quer transmitir confiança antes mesmo do primeiro contato.</p></article>
+      </div>
+    </section>
+
+    <section id="contato" class="section contact-section">
+      <div class="contact-card">
+        <div><span class="eyebrow">Fale com a ${brand}</span><h2>Seu próximo iPhone começa com uma conversa.</h2><p>Envie sua dúvida e a equipe pode orientar você sobre modelos, cores e disponibilidade.</p></div>
+        <form id="contact-form" class="contact-form">
+          <label>Nome<input name="name" required placeholder="Seu nome"></label>
+          <label>Contato<input name="contact" required placeholder="WhatsApp ou e-mail"></label>
+          <label>Mensagem<textarea name="message" rows="4" required placeholder="Qual modelo você procura?"></textarea></label>
+          <button class="primary-btn" type="submit">Enviar interesse</button>
+          <p id="form-note" class="form-note" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer"><span>© ${new Date().getFullYear()} ${brand}</span><span>${category}</span></footer>
+</body>
+</html>`;
+
+          const styleCss = `:root{--bg:${primary};--surface:#111214;--surface2:#17181b;--text:#f6f6f2;--muted:#a6a7ab;--accent:${accent};--accent2:${accent2};--line:rgba(255,255,255,.09)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.5}.noise{position:fixed;inset:0;pointer-events:none;opacity:.04;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 140 140' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E")}
+a{text-decoration:none;color:inherit}.site-header{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;padding:18px 5vw;border-bottom:1px solid var(--line);backdrop-filter:blur(18px);background:rgba(10,10,11,.72)}.brand{display:flex;align-items:center;gap:10px;font-weight:900;letter-spacing:.08em}.brand-mark{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--accent);color:#111;font-weight:1000}.desktop-nav{display:flex;gap:28px;color:var(--muted);font-size:.92rem}.desktop-nav a:hover{color:var(--text)}.menu-btn{display:none;background:none;border:1px solid var(--line);color:var(--text);padding:8px 12px;border-radius:999px}.mobile-nav{display:none}
+.section{padding:110px 5vw}.hero{min-height:82vh;display:grid;grid-template-columns:1.05fr .95fr;gap:40px;align-items:center;max-width:1500px;margin:auto}.hero-copy h1{font-size:clamp(3.2rem,7vw,6.8rem);line-height:.94;letter-spacing:-.06em;max-width:850px;margin:12px 0 24px}.hero-copy>p{max-width:650px;color:var(--muted);font-size:1.08rem}.eyebrow{text-transform:uppercase;letter-spacing:.18em;font-size:.74rem;color:var(--accent);font-weight:800}.hero-actions{display:flex;align-items:center;gap:20px;margin:34px 0}.primary-btn{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:999px;padding:14px 22px;background:var(--accent);color:#111;font-weight:900;cursor:pointer;box-shadow:0 0 0 1px rgba(255,255,255,.08),0 10px 30px rgba(242,210,0,.18)}.primary-btn:hover{transform:translateY(-1px)}.text-link{color:var(--text);font-weight:700}.text-link span{color:var(--accent)}.trust-row{display:flex;flex-wrap:wrap;gap:18px;color:#c9c9c7;font-size:.82rem}.hero-visual{min-height:560px;display:grid;place-items:center;position:relative;overflow:hidden}.orb{position:absolute;border-radius:50%;filter:blur(1px)}.orb-a{width:420px;height:420px;background:radial-gradient(circle,rgba(242,210,0,.22),transparent 68%)}.orb-b{width:320px;height:320px;background:radial-gradient(circle,rgba(169,95,26,.22),transparent 68%);transform:translate(140px,140px)}.phone{width:min(300px,62vw);aspect-ratio:.48;border-radius:42px;padding:9px;background:linear-gradient(145deg,#323338,#090a0b);box-shadow:18px 35px 80px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.1);transform:rotate(8deg)}.phone-screen{height:100%;border-radius:34px;background:radial-gradient(circle at 50% 28%,rgba(242,210,0,.2),transparent 23%),linear-gradient(150deg,#0b0b0c,#16171a);display:flex;flex-direction:column;justify-content:flex-end;align-items:center;padding-bottom:48px;gap:6px;box-shadow:inset 0 0 60px rgba(255,255,255,.03)}.phone-screen span{color:var(--accent);font-size:.7rem;letter-spacing:.24em;font-weight:900}.phone-screen strong{font-size:4rem;letter-spacing:-.08em}.phone-camera{position:absolute;width:84px;height:25px;border-radius:999px;background:#0b0b0c;transform:translateY(5px);z-index:2;align-self:center}
+.section-head{display:flex;justify-content:space-between;align-items:end;gap:30px;margin-bottom:40px}.section-head h2{font-size:clamp(2.2rem,4vw,4rem);line-height:1;letter-spacing:-.04em;margin:8px 0 0}.section-note{max-width:360px;color:var(--muted);font-size:.9rem;text-align:right}.product-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.product-card{background:linear-gradient(180deg,var(--surface2),var(--surface));border:1px solid var(--line);border-radius:24px;overflow:hidden;transition:.25s transform,.25s border-color}.product-card:hover{transform:translateY(-4px);border-color:rgba(242,210,0,.35)}.product-art{height:260px;display:grid;place-items:center;background:radial-gradient(circle at center,rgba(242,210,0,.13),transparent 58%),linear-gradient(135deg,#151619,#090a0b)}.product-art:before{content:"";width:110px;height:210px;border-radius:28px;background:linear-gradient(145deg,#4a4a4d,#0d0d0f);box-shadow:0 25px 50px rgba(0,0,0,.55),inset 0 0 0 2px rgba(255,255,255,.06)}.product-art span{position:absolute;color:rgba(255,255,255,.36);font-size:.75rem;letter-spacing:.25em;text-transform:uppercase}.product-copy{padding:24px}.product-copy h3{font-size:1.6rem;letter-spacing:-.03em;margin:8px 0}.product-copy p{color:var(--muted);font-size:.92rem}.product-meta{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:22px}.product-meta strong{font-size:1.15rem}.outline-btn{border:1px solid var(--line);background:transparent;color:var(--text);padding:10px 14px;border-radius:999px;font-weight:800;cursor:pointer}.outline-btn:hover{border-color:var(--accent);color:var(--accent)}
+.feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.feature-card{padding:28px;border-top:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.025),transparent)}.feature-card span{color:var(--accent);font-size:.78rem;font-weight:900}.feature-card h3{font-size:1.65rem;margin:34px 0 8px}.feature-card p{color:var(--muted);max-width:420px}
+.contact-card{display:grid;grid-template-columns:1.1fr .9fr;gap:36px;padding:42px;border:1px solid var(--line);border-radius:30px;background:radial-gradient(circle at 0 0,rgba(242,210,0,.09),transparent 35%),linear-gradient(145deg,#17181b,#0e0f10)}.contact-card h2{font-size:clamp(2.4rem,5vw,4.6rem);line-height:.98;letter-spacing:-.05em;max-width:700px;margin:10px 0 14px}.contact-card p{color:var(--muted);max-width:620px}.contact-form{display:grid;gap:14px}.contact-form label{display:grid;gap:8px;font-size:.82rem;color:#cfcfcb}.contact-form input,.contact-form textarea{width:100%;border:1px solid var(--line);background:#0b0c0d;color:var(--text);padding:13px 14px;border-radius:14px;outline:0}.contact-form input:focus,.contact-form textarea:focus{border-color:var(--accent)}.form-note{min-height:22px;margin:0}.site-footer{display:flex;justify-content:space-between;padding:28px 5vw;border-top:1px solid var(--line);color:#87888c;font-size:.8rem}
+@media (max-width:900px){.desktop-nav{display:none}.menu-btn{display:block}.mobile-nav{position:sticky;top:67px;z-index:19;padding:10px 5vw;background:rgba(10,10,11,.95);border-bottom:1px solid var(--line)}.mobile-nav.open{display:grid;gap:10px}.mobile-nav a{padding:10px 0;color:#d5d5d0}.hero{grid-template-columns:1fr;min-height:auto;padding-top:76px}.hero-visual{min-height:400px;order:-1}.product-grid,.feature-grid{grid-template-columns:1fr}.section-head{display:grid}.section-note{text-align:left}.contact-card{grid-template-columns:1fr}.section{padding:82px 5vw}}
+@media (max-width:520px){.hero-copy h1{font-size:3.25rem}.hero-actions{flex-direction:column;align-items:flex-start}.phone{width:220px}.hero-visual{min-height:320px}.product-art{height:220px}.contact-card{padding:26px}.site-footer{display:grid;gap:8px}}`;
+          
+          const scriptJs = `document.querySelectorAll(".js-scroll").forEach((button)=>{button.addEventListener("click",()=>document.querySelector(button.dataset.target)?.scrollIntoView({behavior:"smooth"}));});
+const menu=document.querySelector(".menu-btn"), mobile=document.querySelector(".mobile-nav"); if(menu&&mobile){menu.addEventListener("click",()=>{const open=mobile.classList.toggle("open");menu.setAttribute("aria-expanded",String(open));});}
+document.querySelectorAll(".mobile-nav a").forEach((a)=>a.addEventListener("click",()=>mobile?.classList.remove("open")));
+const form=document.getElementById("contact-form"), note=document.getElementById("form-note"); if(form){form.addEventListener("submit",(e)=>{e.preventDefault(); note.textContent="Mensagem preparada. Conecte este formulário ao WhatsApp ou CRM da loja."; note.style.color="var(--accent)"; form.reset();});}`;
+          
+          bundleFiles = [
+            { path: "index.html", content: indexHtml },
+            { path: "style.css", content: styleCss },
+            { path: "script.js", content: scriptJs },
+          ];
+        }
+
         const result = await executeWorkBundle(
           ctx.db,
           work.id,
           {
-            files: Array.isArray(args.files)
-              ? (args.files as Array<{ path: string; content: string }>)
-              : [],
+            files: bundleFiles,
             testCommand: String(args.test_command || ""),
             artifacts: Array.isArray(args.artifacts) ? (args.artifacts as string[]) : [],
             summary: typeof args.summary === "string" ? args.summary : undefined,
