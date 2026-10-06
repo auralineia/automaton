@@ -194,7 +194,11 @@ async function searchBing(query: string, limit = 8): Promise<Array<{ title: stri
       if (!match) continue;
       const url = match[1];
       if (!/^https?:\/\//i.test(url)) continue;
-      if (/(instagram\.com|facebook\.com|tiktok\.com|linkedin\.com)/i.test(url)) continue;
+      try {
+        const host = new URL(url).hostname.toLowerCase();
+        if (!host.endsWith(".com.br")) continue;
+        if (/(instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org)/i.test(host)) continue;
+      } catch { continue; }
       const caption = item.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
       results.push({
         title: decodeHtml(match[2]).slice(0, 220),
@@ -260,6 +264,17 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
     if (!row?.website) continue;
     try {
       const page = await fetchPublicText(row.website);
+      try {
+        const host = new URL(page.url).hostname.toLowerCase();
+        if (!host.endsWith(".com.br") || /wikipedia\.org|bing\.com|google\.com|duckduckgo\.com/i.test(host)) {
+          db.raw.prepare("UPDATE revenue_leads SET status=?,updated_at=? WHERE id=?").run("rejected", now(), id);
+          continue;
+        }
+      } catch { continue; }
+      if (page.text.trim().length < 120) {
+        db.raw.prepare("UPDATE revenue_leads SET status=?,updated_at=? WHERE id=?").run("rejected", now(), id);
+        continue;
+      }
       const scored = heuristicScore(page.text + " " + (row.snippet || "") + " " + page.title, page.url);
       db.raw.prepare("UPDATE revenue_leads SET website=?,score=?,notes=?,status=?,updated_at=? WHERE id=?").run(page.url, scored.score, JSON.stringify({ title: page.title, reasons: scored.reasons, status: page.status }), "qualified", now(), id);
       researched++;
