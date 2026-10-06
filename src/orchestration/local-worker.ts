@@ -19,7 +19,6 @@ import {
   startWork,
   checkpointWork,
   recordWorkArtifact,
-  completeWork as completeDurableWork,
 } from "./work-engine.js";
 import type {
   AutomatonConfig,
@@ -116,7 +115,6 @@ export class LocalWorkerPool {
       task.goalId,
       task.title,
       task.description,
-      path.join(path.dirname(new AgentWorkspace(task.goalId).basePath)),
     );
     const workspace = new AgentWorkspace(task.goalId, durableWork.workspacePath);
     const allowedEditRoot = workspace.basePath;
