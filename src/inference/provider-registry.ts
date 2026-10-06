@@ -56,15 +56,15 @@ const DEFAULT_EMERGENCY_STOP_CREDITS = 100;
 const DEFAULT_TIER_DEFAULTS: Record<ModelTier, TierDefault> = {
   reasoning: {
     preferredProvider: "openai",
-    fallbackOrder: ["groq", "together"],
+    fallbackOrder: ["groq", "gemini", "together"],
   },
   fast: {
     preferredProvider: "groq",
-    fallbackOrder: ["openai", "together", "local"],
+    fallbackOrder: ["openai", "gemini", "together", "local"],
   },
   cheap: {
     preferredProvider: "groq",
-    fallbackOrder: ["together", "local", "openai"],
+    fallbackOrder: ["gemini", "together", "local", "openai"],
   },
 };
 
@@ -157,6 +157,51 @@ const DEFAULT_PROVIDERS: ProviderConfig[] = [
     maxRequestsPerMinute: 14400,
     maxTokensPerMinute: 500000,
     priority: 2,
+    enabled: true,
+  },
+  {
+    id: "gemini",
+    name: "Google Gemini",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    apiKeyEnvVar: "GEMINI_API_KEY",
+    models: [
+      {
+        id: "gemini-3.8-flash",
+        tier: "reasoning",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 65536,
+        costPerInputToken: 0.00075,
+        costPerOutputToken: 0.00375,
+        supportsTools: true,
+        supportsVision: true,
+        supportsStreaming: true,
+      },
+      {
+        id: "gemini-3.8-flash",
+        tier: "fast",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 65536,
+        costPerInputToken: 0.00075,
+        costPerOutputToken: 0.00375,
+        supportsTools: true,
+        supportsVision: true,
+        supportsStreaming: true,
+      },
+      {
+        id: "gemini-3.8-flash",
+        tier: "cheap",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 65536,
+        costPerInputToken: 0.00075,
+        costPerOutputToken: 0.00375,
+        supportsTools: true,
+        supportsVision: true,
+        supportsStreaming: true,
+      },
+    ],
+    maxRequestsPerMinute: 60,
+    maxTokensPerMinute: 1_000_000,
+    priority: 3,
     enabled: true,
   },
   {
@@ -283,6 +328,19 @@ export class ProviderRegistry {
       const configuredProviders = normalizeProviders(raw.providers);
       if (configuredProviders.length > 0) {
         providers = configuredProviders;
+
+        // Keep the sovereign fallback available when a provider config written
+        // by an older runtime predates Gemini. Respect an explicit Gemini entry
+        // in the config, including disabled=true, rather than overriding it.
+        if (
+          process.env.GEMINI_API_KEY &&
+          !providers.some((provider) => provider.id === "gemini")
+        ) {
+          const geminiDefault = DEFAULT_PROVIDERS.find((provider) => provider.id === "gemini");
+          if (geminiDefault) {
+            providers = [...providers, deepCloneProvider(geminiDefault)];
+          }
+        }
       }
 
       if (raw.tierDefaults && typeof raw.tierDefaults === "object") {
