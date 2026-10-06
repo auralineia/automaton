@@ -1342,6 +1342,8 @@ export async function runAgentLoop(
         "git_clone",
         "git_branch",
         "review_upstream_changes",
+        "work_create", "work_start", "work_status", "work_resume",
+        "work_checkpoint", "work_artifact", "work_test", "work_publish", "work_complete",
       ]);
 
       // Deterministic guard: once an autonomous goal exists, the parent must
