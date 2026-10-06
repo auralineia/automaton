@@ -1751,7 +1751,9 @@ export async function runAgentLoop(
         )
       ) {
         log(config, `[CYCLE LIMIT] ${cycleTurnCount} autonomous turns reached (max: ${Math.min(maxCycleTurns, maxAutonomousCycleTurns)}). Forcing sleep.`);
-        db.setKV("sleep_until", new Date(Date.now() + 120_000).toISOString());
+        // Autonomous cycle exhaustion should back off for the full configured autonomy interval, not 2 minutes.
+        // Otherwise an unfinished autonomous goal can wake repeatedly and burn provider quota.
+        db.setKV("sleep_until", new Date(Date.now() + getAutonomousCycleIntervalMs()).toISOString());
         db.setAgentState("sleeping");
         onStateChange?.("sleeping");
         running = false;
