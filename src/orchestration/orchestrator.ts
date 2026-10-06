@@ -52,7 +52,7 @@ const DEFAULT_TASK_FUNDING_CENTS = 25;
 const DEFAULT_MAX_REPLANS = 3;
 
 function isInferenceQuotaError(message: string): boolean {
-  return /\\[INFERENCE_QUOTA\\]|\\b429\\b|rate limit|quota exceeded|resource_exhausted|tokens per day|tokens per minute|tpd/i.test(message);
+  return /\[INFERENCE_QUOTA\]|\b429\b|rate limit|quota exceeded|resource_exhausted|tokens per day|tokens per minute|tpd|all providers failed|no providers available/i.test(message);
 }
 
 type ExecutionPhase =
