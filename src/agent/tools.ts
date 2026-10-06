@@ -936,8 +936,31 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
           workId = work.id;
         }
 
-        const work = getWork(ctx.db, workId);
-        if (!work) return `Work not found: ${workId}`;
+        let work = getWork(ctx.db, workId);
+        if (!work) {
+          workId = ctx.db.getKV("creator_work_id") || "";
+          if (!workId) {
+            workId = (ctx.db.raw.prepare(
+              "SELECT id FROM work_items WHERE status NOT IN ('completed','failed') ORDER BY updated_at DESC LIMIT 1",
+            ).get() as { id?: string } | undefined)?.id || "";
+          }
+          work = workId ? getWork(ctx.db, workId) : null;
+        }
+        if (!work) {
+          const created = createWork(ctx.db, {
+            title: typeof args.title === "string" ? args.title : "Creator work",
+            description: typeof args.description === "string" ? args.description : "Complete the requested deliverable.",
+            type: "digital-work",
+            successCriteria: "Files written, validation passed, artifacts registered, work completed.",
+          });
+          work = created;
+          workId = created.id;
+        }
+
+        if (ctx.inputSource === "creator") {
+          ctx.db.setKV("creator_work_id", work.id);
+          ctx.db.setKV("creator_work_workspace", work.workspacePath);
+        }
 
         const result = await executeWorkBundle(
           ctx.db,
