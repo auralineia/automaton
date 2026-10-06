@@ -12,7 +12,7 @@ const logger = createLogger("harness.base");
 
 /** Provider quota/rate-limit errors should stop a worker immediately. */
 function isInferenceQuotaError(message: string): boolean {
-  return /\\b429\\b|rate limit|quota exceeded|resource_exhausted|tokens per day|tokens per minute|tpd/i.test(message);
+  return /\b429\b|rate limit|quota exceeded|resource_exhausted|tokens per day|tokens per minute|tpd|all providers failed|no providers available/i.test(message);
 }
 const MAX_CONSECUTIVE_INFERENCE_ERRORS = 3;
 const MAX_TOOL_OUTPUT_LENGTH = 16_000;
@@ -137,6 +137,8 @@ export abstract class BaseHarness implements AgentHarness {
         // Bubble them up immediately so the orchestrator can put RITTY into a
         // durable backoff instead of consuming the next available quota window.
         if (isInferenceQuotaError(message)) {
+          const backoffUntil = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+          this.context.db.prepare("INSERT OR REPLACE INTO kv (key, value, updated_at) VALUES (?, ?, datetime('now'))").run("inference_backoff_until", backoffUntil);
           throw new Error(`[INFERENCE_QUOTA] ${message}`);
         }
 
