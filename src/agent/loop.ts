@@ -1372,9 +1372,9 @@ export async function runAgentLoop(
         !isCreatorExecution &&
         getActiveGoals(db.raw).length > 0;
 
-      const creatorWorkActive = !!db.getKV("creator_work_id") && !!db.raw.prepare(
-        "SELECT 1 FROM work_items WHERE id=? AND status NOT IN ('completed','failed') LIMIT 1",
-      ).get(db.getKV("creator_work_id"));
+      const creatorWorkActive = isCreatorExecution && !!db.raw.prepare(
+        "SELECT 1 FROM work_items WHERE status NOT IN ('completed','failed') ORDER BY updated_at DESC LIMIT 1",
+      ).get();
       const creatorWorkStatusSeen = db.getKV("creator_work_status_seen") === "1";
       const inferenceToolSource =
         currentInput?.source === "creator"
