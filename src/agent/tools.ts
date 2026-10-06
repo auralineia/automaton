@@ -754,6 +754,85 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
       },
     },
 
+    // ── Revenue Acquisition Engine ──
+    {
+      name: "revenue_autopilot_cycle",
+      description:
+        "Run one safe revenue-acquisition cycle: search public business prospects, research their public websites, score the best opportunity, and generate a sales proposal. It never sends outreach, charges anyone, purchases anything, trades, transfers funds, or moves a wallet.",
+      category: "general",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          niche: { type: "string", description: "Business niche to target (optional)." },
+          location: { type: "string", description: "Country/city/region to target (optional)." },
+          limit: { type: "number", description: "Number of public prospects to research, 3-8." },
+          price_cents: { type: "number", description: "Suggested offer price in BRL cents." },
+        },
+      },
+      execute: async (args, ctx) => {
+        const { revenueAutopilotCycle } = await import("../revenue/engine.js");
+        return revenueAutopilotCycle(ctx.db, {
+          niche: typeof args.niche === "string" ? args.niche : undefined,
+          location: typeof args.location === "string" ? args.location : undefined,
+          limit: typeof args.limit === "number" ? args.limit : undefined,
+          priceCents: typeof args.price_cents === "number" ? args.price_cents : undefined,
+        });
+      },
+    },
+    {
+      name: "revenue_pipeline",
+      description:
+        "Show the real revenue pipeline stored in the persistent database: leads, qualified prospects, proposals, pending approvals, and creator-confirmed revenue.",
+      category: "general",
+      riskLevel: "safe",
+      parameters: { type: "object", properties: {} },
+      execute: async (_args, ctx) => {
+        const { revenuePipeline } = await import("../revenue/engine.js");
+        return revenuePipeline(ctx.db);
+      },
+    },
+    {
+      name: "revenue_next_action",
+      description:
+        "Return the highest-priority pending revenue action requiring creator review before any external outreach.",
+      category: "general",
+      riskLevel: "safe",
+      parameters: { type: "object", properties: {} },
+      execute: async (_args, ctx) => {
+        const { revenueNextAction } = await import("../revenue/engine.js");
+        return revenueNextAction(ctx.db);
+      },
+    },
+    {
+      name: "record_confirmed_revenue",
+      description:
+        "Record a sale that the creator has explicitly confirmed as received. This only writes accounting data; it never moves money or performs a payment.",
+      category: "general",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          lead_id: { type: "string", description: "Optional revenue lead ID." },
+          amount_cents: { type: "number", description: "Confirmed BRL amount in cents." },
+          type: { type: "string", description: "Sale type." },
+          notes: { type: "string", description: "Confirmation notes." },
+          confirmed: { type: "boolean", description: "Must be true to write the event." },
+        },
+        required: ["amount_cents", "confirmed"],
+      },
+      execute: async (args, ctx) => {
+        const { recordConfirmedRevenue } = await import("../revenue/engine.js");
+        return recordConfirmedRevenue(ctx.db, {
+          leadId: typeof args.lead_id === "string" ? args.lead_id : undefined,
+          amountCents: Number(args.amount_cents),
+          type: typeof args.type === "string" ? args.type : undefined,
+          notes: typeof args.notes === "string" ? args.notes : undefined,
+          confirmed: args.confirmed === true,
+        });
+      },
+    },
+
     // ── Survival Tools ──
     {
       name: "sleep",
