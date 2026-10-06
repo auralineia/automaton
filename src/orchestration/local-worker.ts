@@ -51,6 +51,10 @@ export class LocalWorkerPool {
   constructor(private readonly config: LocalWorkerConfig) {}
 
   spawn(task: TaskNode): { address: string; name: string; sandboxId: string } {
+    const maxWorkers = Math.max(1, Number(process.env.RITTY_MAX_LOCAL_WORKERS || "1"));
+    if (this.activeWorkers.size >= maxWorkers) {
+      throw new Error(`Local worker capacity reached (${maxWorkers}). Queue this task instead of spawning another inference worker.`);
+    }
     const workerId = `local-worker-${ulid()}`;
     const workerName = `worker-${task.agentRole ?? "generalist"}-${workerId.slice(-6)}`;
     const address = `local://${workerId}`;
