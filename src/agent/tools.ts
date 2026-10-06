@@ -887,6 +887,81 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
       },
     },
     {
+      name: "work_execute",
+      description: "Execute a durable work bundle in one call: write files into the active work workspace, run one validation command, register artifacts, checkpoint the result, and complete the work only when the test passes. Prefer this for small deterministic deliverables.",
+      category: "vm",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          work_id: { type: "string" },
+          title: { type: "string" },
+          description: { type: "string" },
+          files: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                path: { type: "string" },
+                content: { type: "string" },
+              },
+              required: ["path", "content"],
+            },
+          },
+          test_command: { type: "string" },
+          artifacts: { type: "array", items: { type: "string" } },
+          summary: { type: "string" },
+        },
+        required: ["files", "test_command"],
+      },
+      execute: async (args, ctx) => {
+        const { createWork, getWork, executeWorkBundle } = await import("../orchestration/work-engine.js");
+        let workId = typeof args.work_id === "string" && args.work_id.trim()
+          ? args.work_id.trim()
+          : ctx.db.getKV("creator_work_id") || "";
+
+        if (!workId) {
+          workId = (ctx.db.raw.prepare(
+            "SELECT id FROM work_items WHERE status NOT IN ('completed','failed') ORDER BY updated_at DESC LIMIT 1",
+          ).get() as { id?: string } | undefined)?.id || "";
+        }
+
+        if (!workId) {
+          const work = createWork(ctx.db, {
+            title: typeof args.title === "string" ? args.title : "Creator work",
+            description: typeof args.description === "string" ? args.description : "Complete the requested deliverable.",
+            type: "digital-work",
+            successCriteria: "Files written, validation passed, artifacts registered, work completed.",
+          });
+          workId = work.id;
+        }
+
+        const work = getWork(ctx.db, workId);
+        if (!work) return `Work not found: ${workId}`;
+
+        const result = await executeWorkBundle(
+          ctx.db,
+          work.id,
+          {
+            files: Array.isArray(args.files)
+              ? (args.files as Array<{ path: string; content: string }>)
+              : [],
+            testCommand: String(args.test_command || ""),
+            artifacts: Array.isArray(args.artifacts) ? (args.artifacts as string[]) : [],
+            summary: typeof args.summary === "string" ? args.summary : undefined,
+          },
+          process.env.RITTY_MODE === "sovereign" ? undefined : ctx.conway,
+        );
+
+        if (ctx.inputSource === "creator") {
+          ctx.db.setKV("creator_work_id", result.workId);
+          ctx.db.setKV("creator_work_workspace", result.workspacePath);
+          if (result.completed) ctx.db.setKV("creator_work_status_seen", "1");
+        }
+        return JSON.stringify(result, null, 2);
+      },
+    },
+        {
       name: "work_status",
       description: "Show durable work status, last checkpoint and workspace path.",
       category: "memory",
