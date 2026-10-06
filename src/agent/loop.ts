@@ -1031,11 +1031,13 @@ export async function runAgentLoop(
             description:
               "Run one concrete revenue-acquisition cycle for legitimate digital services. " +
               "Use revenue_autopilot_cycle to discover public business prospects, research their public websites, qualify one opportunity, " +
-              "and generate a proposal under /root/.automaton/revenue/. Use revenue_pipeline and revenue_next_action to inspect durable progress. " +
+              "and generate a proposal under /root/.automaton/revenue/. Then use revenue_prepare_outreach for the best real lead so a personalized draft " +
+              "and public demo are ready for creator review. Use revenue_pipeline and revenue_next_action to inspect durable progress. " +
               "The goal is to create a real, verifiable sales opportunity for a website/digital-presence service. " +
-              "Do not send unsolicited outreach automatically; prepare the best next action for creator review. " +
-              "Never perform transfers, trades, wallet operations, crypto transactions, currency conversion, payments, purchases, paid deployments, " +
-              "or other real financial operations. Never fabricate a prospect, contact, result, sale, or revenue event.",
+              "Do not send external outreach automatically; human approval is required before any external message. " +
+              "A customer checkout may be created only after a separate human approval action; receiving customer payment is allowed and does not spend RITTY funds. " +
+              "Never perform transfers, trades, wallet operations, crypto transactions, currency conversion, purchases, or outbound spending from RITTY funds. " +
+              "Never fabricate a prospect, contact, result, sale, or revenue event.",
             strategy:
               "Research public market -> qualify one prospect -> create a concrete offer -> persist evidence -> await creator approval. " +
               "One cycle should produce one tangible sales asset and then stop rather than burning inference quota.",
