@@ -84,7 +84,7 @@ const TERMINAL_TASK_STATUSES = new Set<TaskStatus>([
 ]);
 
 function isInferenceQuotaError(message: string): boolean {
-  return /\\[INFERENCE_QUOTA\\]|\\b429\\b|rate limit|quota exceeded|resource_exhausted|tokens per day|tokens per minute|tpd/i.test(message);
+  return /\[INFERENCE_QUOTA\]|\b429\b|rate limit|quota exceeded|resource_exhausted|tokens per day|tokens per minute|tpd|all providers failed|no providers available/i.test(message);
 }
 
 export function createGoal(
