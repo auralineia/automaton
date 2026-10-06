@@ -89,7 +89,14 @@ export abstract class BaseHarness implements AgentHarness {
       }
     }
 
-    lines.push("", "Complete this task and provide your results. Call task_done when finished.");
+    lines.push(
+      "",
+      "## Durable Work Execution",
+      "For substantial work, use work_status/work_resume before acting, work_checkpoint after meaningful milestones or blockers, work_test for verification, work_artifact for deliverables, and work_complete only after the result is actually verified.",
+      "Never restart completed work after an interruption. Resume from the latest successful checkpoint and preserve the existing workspace.",
+      "",
+      "Complete this task and provide your results. Call task_done when finished.",
+    );
     return lines.join("\n");
   }
 
