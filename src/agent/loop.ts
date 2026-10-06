@@ -534,7 +534,7 @@ export async function runAgentLoop(
         workspace_path?: string;
       } | undefined;
 
-      if (igapple && igapple.status === "completed") {
+      if (igapple?.id && igapple.status === "completed") {
         db.raw.prepare(
           "UPDATE work_items SET status='in_progress', completed_at=NULL, summary=NULL, updated_at=datetime('now') WHERE id=?",
         ).run(igapple.id);
