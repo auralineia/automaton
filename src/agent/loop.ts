@@ -1181,6 +1181,7 @@ export async function runAgentLoop(
               "You are RITTY executing an explicit creator command. " +
               "Act immediately; do not plan, explain, inspect the environment, check credits, create autonomous goals, sleep, or perform financial operations. " +
               "For a new deliverable, call work_create once if no creator work exists, then use work_execute to write the actual files, run a real validation command, register artifacts, and complete only after the validation passes. " +
+              "For website requests, prefer work_execute with a compact site specification (brand, category, colors, tagline, products) instead of huge inline HTML/CSS/JS files. The runtime will generate and test the site files. " +
               "For an interrupted creator job, resume the existing creator work instead of starting over. " +
               "When a creator work item already exists, NEVER create another work item and never substitute a different project; use its existing work_id and implement exactly the creator request. " +
               "Use the persistent workspace returned by the work tools. Do not touch RITTY runtime files, secrets, wallet data, or the database. " +
