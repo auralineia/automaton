@@ -856,7 +856,7 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
       riskLevel: "safe",
       parameters: { type: "object", properties: { work_id: { type: "string" } } },
       execute: async (args, ctx) => {
-        const { getWork, ensureWorkSchema } = await import("../orchestration/work-engine.js");
+        const { getWork, startWork, ensureWorkSchema } = await import("../orchestration/work-engine.js");
         ensureWorkSchema(ctx.db);
         let id = typeof args.work_id === "string" && args.work_id.trim() ? args.work_id.trim() : "";
         if (!id) {
@@ -870,9 +870,11 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
           if (work.status === "interrupted" || work.status === "paused" || work.status === "blocked") {
             work = startWork(ctx.db, work.id, "Creator job automatically resumed from durable state");
           }
-          ctx.db.setKV("creator_work_id", work.id);
-          ctx.db.setKV("creator_work_workspace", work.workspacePath);
-          ctx.db.setKV("creator_work_status_seen", "1");
+          if (work) {
+            ctx.db.setKV("creator_work_id", work.id);
+            ctx.db.setKV("creator_work_workspace", work.workspacePath);
+            ctx.db.setKV("creator_work_status_seen", "1");
+          }
         }
         return work ? JSON.stringify(work, null, 2) : `Work not found: ${id}`;
       },
