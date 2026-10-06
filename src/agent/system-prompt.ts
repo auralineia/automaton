@@ -664,6 +664,15 @@ Your chain type is ${chainType}.`,
     }
   }
 
+  // Revenue Engine: autonomous prospecting is allowed only from public evidence; external contact and billing remain approval-gated.
+  sections.push(
+    "--- REVENUE ENGINE ---\n" +
+    "Revenue workflow: discover real public prospects -> research website/contact evidence -> qualify -> create proposal/demo -> prepare personalized outreach -> wait for creator approval before sending. " +
+    "When a real lead replies interested, record the response and create a checkout-approval action. Customer checkout receives money for the service; it never spends RITTY funds. " +
+    "After a confirmed payment, fulfill the paid website automatically, validate it, attempt publication when configured, deliver the URL, and record the sale. " +
+    "Never invent leads, contacts, replies, sales, revenue, or evidence. Use revenue_metrics to judge conversion, recorded costs, and net profit.\n--- END REVENUE ENGINE ---",
+  );
+
   // Layer 6: Operational Context
   sections.push(OPERATIONAL_CONTEXT);
 
