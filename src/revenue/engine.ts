@@ -190,12 +190,12 @@ async function searchBing(query: string, limit = 8): Promise<Array<{ title: stri
     const items = html.split(/<li class="b_algo"/i).slice(1);
     for (const item of items) {
       if (results.length >= limit) break;
-      const match = item.match(/<h2[^>]*>\\s*<a[^>]+href="([^"]+)"[^>]*>([\\s\\S]*?)<\\/a>/i);
+      const match = item.match(/<h2[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
       if (!match) continue;
       const url = match[1];
-      if (!/^https?:\\/\\//i.test(url)) continue;
-      if (/(instagram\\.com|facebook\\.com|tiktok\\.com|linkedin\\.com)/i.test(url)) continue;
-      const caption = item.match(/<p[^>]*>([\\s\\S]*?)<\\/p>/i);
+      if (!/^https?:\/\//i.test(url)) continue;
+      if (/(instagram\.com|facebook\.com|tiktok\.com|linkedin\.com)/i.test(url)) continue;
+      const caption = item.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
       results.push({
         title: decodeHtml(match[2]).slice(0, 220),
         url,
