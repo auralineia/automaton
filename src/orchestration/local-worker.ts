@@ -116,7 +116,7 @@ export class LocalWorkerPool {
       task.description,
     );
     const workspace = new AgentWorkspace(task.goalId, durableWork.workspacePath);
-    const allowedEditRoot = workspace.basePath;
+    const allowedEditRoot = durableWork.repoPath || workspace.basePath;
     startWork(this.config.db, durableWork.id, `Worker ${workerId} resumed task ${task.id}`);
     checkpointWork(
       this.config.db,
