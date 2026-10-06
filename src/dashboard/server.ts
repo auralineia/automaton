@@ -4,6 +4,7 @@ import path from "node:path";
 import type { AutomatonConfig, AutomatonDatabase } from "../types.js";
 import { listWorks, ensureWorkSchema, getWork, getWorkArtifacts, getWorkTests } from "../orchestration/work-engine.js";
 import { ensureRevenueCommerceSchema } from "../revenue/commerce.js";
+import { handleRevenueRequest } from "./revenue-http.js";
 
 const DASHBOARD_HTML = String.raw`<!doctype html>
 <html lang="pt-BR">
