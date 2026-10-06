@@ -1299,7 +1299,7 @@ export async function runAgentLoop(
 
       // Creator-command override: the dashboard is an explicit instruction
       // from the owner and must be acted on in the current turn.
-      if (pendingInput?.source === "creator") {
+      if (pendingInput?.source === "creator" || creatorWaiting || creatorTaskActive) {
         messages.push({
           role: "system",
           content:
@@ -1324,6 +1324,10 @@ export async function runAgentLoop(
 
       // Capture input before clearing
       const currentInput = pendingInput;
+      const isCreatorExecution =
+        currentInput?.source === "creator" ||
+        creatorWaiting ||
+        creatorTaskActive;
 
       // Clear pending input after use
       pendingInput = undefined;
@@ -1366,7 +1370,7 @@ export async function runAgentLoop(
       // This is done at tool-exposure time so even malformed model arguments
       // cannot re-enter create_goal.
       const activeGoalExists =
-        currentInput?.source !== "creator" &&
+        !isCreatorExecution &&
         getActiveGoals(db.raw).length > 0;
 
       const creatorWorkActive = !!db.getKV("creator_work_id") && !!db.raw.prepare(
@@ -1426,7 +1430,9 @@ export async function runAgentLoop(
         const toolCallMessages: any[] = [];
         let callCount = 0;
         const currentInputSource = currentInput?.source as InputSource | undefined;
-        toolContext.inputSource = currentInputSource;
+        const effectiveInputSource: InputSource | undefined =
+          isCreatorExecution ? "creator" : currentInputSource;
+        toolContext.inputSource = effectiveInputSource;
 
         for (const tc of response.toolCalls) {
           if (callCount >= MAX_TOOL_CALLS_PER_TURN) {
@@ -1467,7 +1473,7 @@ export async function runAgentLoop(
           }
 
           if (
-            currentInput?.source !== "creator" &&
+            !isCreatorExecution &&
             getActiveGoals(db.raw).length > 0 &&
             isIdleOnlyTool(tc.function.name)
           ) {
@@ -1492,7 +1498,7 @@ export async function runAgentLoop(
             toolContext,
             policyEngine,
             spendTracker ? {
-              inputSource: currentInputSource,
+              inputSource: effectiveInputSource,
               turnToolCallCount: turn.toolCalls.filter(t => t.name === "transfer_credits").length,
               sessionSpend: spendTracker,
             } : undefined,
@@ -1513,7 +1519,7 @@ export async function runAgentLoop(
 
       // ── Persist Turn (atomic: turn + tool calls + inbox ack) ──
       const claimedIds = claimedMessages.map((m) => m.id);
-      if (currentInput?.source === "creator") {
+      if (isCreatorExecution) {
         const CREATOR_MUTATING_TOOLS = new Set([
           "exec", "write_file", "edit_own_file", "git_commit", "git_push",
           "git_pull", "git_clone", "git_branch",
@@ -1552,7 +1558,7 @@ export async function runAgentLoop(
       const blockedGoalCall = turn.toolCalls.find(
         (tc) => getObservedToolName(tc) === "create_goal" && tc.result?.includes("BLOCKED"),
       );
-      if (blockedGoalCall && currentInput?.source !== "creator") {
+      if (blockedGoalCall && !isCreatorExecution) {
         // An active goal is already in progress. Do not park the parent loop:
         // yield immediately back to the orchestrator and force the next model
         // turn to continue the existing work. This removes the old 10s/120s+
@@ -1701,7 +1707,7 @@ export async function runAgentLoop(
       ]);
       const didMutate = turn.toolCalls.some((tc) => MUTATING_TOOLS.has(getObservedToolName(tc)));
 
-      if (!currentInput && !didMutate) {
+      if (!isCreatorExecution && !currentInput && !didMutate) {
         idleTurnCount++;
         if (idleTurnCount >= MAX_IDLE_TURNS) {
           log(config, `[IDLE] ${idleTurnCount} consecutive idle turns with no work. Entering sleep.`);
@@ -1745,7 +1751,7 @@ export async function runAgentLoop(
         // diagnostics, confirmations, and other harmless commands must not loop forever.
         // Tool-only turns still keep creator_task_active so multi-step implementation work
         // can continue on the next inference cycle.
-        if (currentInput?.source === "creator") {
+        if (isCreatorExecution) {
           db.deleteKV("creator_task_active");
           db.deleteKV("creator_task_progress");
           log(config, "[CREATOR] Task completed with final text response.");
