@@ -398,6 +398,7 @@ function buildSnapshot(db: AutomatonDatabase, config: AutomatonConfig) {
 
 export function startDashboardServer(options: { db: AutomatonDatabase; config: AutomatonConfig }): http.Server | null {
   const { db, config } = options;
+  ensureRevenueCommerceSchema(db);
   const port = Number(process.env.PORT || process.env.RITTY_DASHBOARD_PORT || 8787);
   const host = "0.0.0.0";
 
