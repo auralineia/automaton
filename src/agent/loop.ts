@@ -1301,11 +1301,11 @@ export async function runAgentLoop(
             "The runtime root package.json, config.json, wallet.json, state database, SOUL.md, " +
             "policy/guard files, and other protected runtime files are read-only. NEVER attempt to write, " +
             "replace, or install dependencies through those files. For coding tasks, use the existing " +
-            "Node.js runtime and built-in modules whenever possible. The sovereign sandbox home is /root; " +
-            "do NOT use /home/ritty, /home/agent, or other assumed home directories. Create application source files in " +
-            "/root/workspace/<project> (or ./workspace/<project>) and verify them with the exec tool. Node.js and pnpm " +
-            "are available at runtime; npm and Python may not be installed. For substantial work, use the durable work tools " +
-            "(work_create/work_resume/work_checkpoint/work_test/work_artifact/work_complete) so the job survives restarts. Do not stop at a plan or explanation.",
+            "Node.js runtime and built-in modules are available whenever possible. The sovereign sandbox home is /root. " +
+            "Do NOT use /home/ritty or /home/agent. For durable work, the workspacePath returned by work_create/work_status is the ONLY source of truth: create and modify application files there. " +
+            "Do not use /root/workspace as a substitute. Verify using work_test or exec inside that returned workspace. " +
+            "For substantial work use this exact workflow: work_create only if no active work exists, then work_status/work_resume, write_file or edit files, work_test, work_checkpoint/work_artifact, and work_complete. " +
+            "Once work_create succeeds, NEVER call work_create again for the same task. Do not waste turns on pwd, ls, git_status, git_diff, or environment inspection. Do not stop at a plan or explanation.",
         });
       }
 
@@ -1356,9 +1356,16 @@ export async function runAgentLoop(
         currentInput?.source !== "creator" &&
         getActiveGoals(db.raw).length > 0;
 
+      const creatorWorkActive = !!db.getKV("creator_work_id") && !!db.raw.prepare(
+        "SELECT 1 FROM work_items WHERE id=? AND status NOT IN ('completed','failed') LIMIT 1",
+      ).get(db.getKV("creator_work_id"));
       const inferenceToolSource =
         currentInput?.source === "creator"
-          ? tools.filter((tool) => creatorToolSet.has(tool.name) && !CREATOR_BLOCKED_TOOLS.has(tool.name))
+          ? tools.filter((tool) =>
+              creatorToolSet.has(tool.name) &&
+              !CREATOR_BLOCKED_TOOLS.has(tool.name) &&
+              !(creatorWorkActive && tool.name === "work_create")
+            )
           : activeGoalExists
             ? tools.filter((tool) => !isIdleOnlyTool(tool.name) && tool.name !== "create_goal")
             : tools;
