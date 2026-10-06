@@ -24,6 +24,7 @@ import {
 import { consumeNextWakeEvent, insertWakeEvent } from "./state/database.js";
 import { runAgentLoop } from "./agent/loop.js";
 import { ensureWorkSchema, recoverInterruptedWorks } from "./orchestration/work-engine.js";
+import { runWorkEngineSelfTest } from "./orchestration/work-engine-self-test.js";
 import { ModelRegistry } from "./inference/registry.js";
 import { loadSkills } from "./skills/loader.js";
 import { ensureDefaultSkills } from "./skills/defaults.js";
@@ -304,6 +305,14 @@ async function run(): Promise<void> {
     `[${new Date().toISOString()}] Persistent SQLite database: ${dbPath}`,
   );
   startDashboardServer({ db, config });
+
+  // Run the durable work engine E2E once after boot. This is deterministic and non-financial.
+  try {
+    await runWorkEngineSelfTest(db);
+    logger.info(`[${new Date().toISOString()}] [SELF-TEST] Durable work engine E2E PASS.`);
+  } catch (error) {
+    logger.error(`[${new Date().toISOString()}] [SELF-TEST] Durable work engine E2E FAIL: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   // Persist createdAt: only set if not already stored (never overwrite)
   const existingCreatedAt = db.getIdentity("createdAt");
