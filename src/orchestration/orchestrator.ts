@@ -768,7 +768,8 @@ export class Orchestrator {
     if (progress.failed > 0) {
       const failedTaskId = state.failedTaskId ?? this.findFirstFailedTaskId(goal.id);
       const failedTask = failedTaskId ? getTaskById(this.params.db, failedTaskId) : null;
-      const failedOutput = failedTask?.result?.output ?? state.failedError ?? "Task execution failed";
+      const failedTaskResult = failedTask ? taskRowToTaskNode(failedTask).result : null;
+      const failedOutput = failedTaskResult?.output ?? state.failedError ?? "Task execution failed";
 
       // Provider quota exhaustion is a global runtime condition, not a task bug.
       // Do not replan it: replanning would immediately consume the same exhausted
