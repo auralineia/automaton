@@ -1700,7 +1700,21 @@ export async function runAgentLoop(
       consecutiveErrors = 0;
     } catch (err: any) {
       consecutiveErrors++;
-      log(config, `[ERROR] Turn failed: ${err.message}`);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      log(config, `[ERROR] Turn failed: ${errorMessage}`);
+
+      // Provider exhaustion is global. Stop the parent loop immediately so it
+      // cannot keep spawning/processing autonomous work while the quota is gone.
+      if (/\\[INFERENCE_QUOTA\\]|\\b429\\b|rate limit|quota exceeded|resource_exhausted|tokens per day|tokens per minute|tpd|all providers failed|no providers available/i.test(errorMessage)) {
+        const backoffUntil = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+        db.setKV("inference_backoff_until", backoffUntil);
+        db.setKV("sleep_until", backoffUntil);
+        db.setAgentState("sleeping");
+        onStateChange?.("sleeping");
+        log(config, `[BACKOFF] Provider quota exhausted. Autonomous runtime paused until ${backoffUntil}.`);
+        running = false;
+        break;
+      }
 
       // Handle inbox message state on turn failure:
       // Messages that have retries remaining go back to 'received';
