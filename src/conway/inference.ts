@@ -94,7 +94,7 @@ export function createInferenceClient(
     });
     const effectiveModel =
       backend === "gemini" && process.env.RITTY_MODE === "sovereign"
-        ? (process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.5-flash-lite")
+        ? (process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.6-flash")
         : model;
 
     // Newer models (o-series, gpt-5.x, gpt-4.1) require max_completion_tokens.
@@ -119,7 +119,9 @@ export function createInferenceClient(
 
     const safeMessages = isSovereignGroq
       ? compactSovereignGroqMessages(messages)
-      : messages;
+      : backend === "gemini"
+        ? normalizeGeminiMessages(messages)
+        : messages;
 
     const body: Record<string, unknown> = {
       model: effectiveModel,
@@ -257,6 +259,31 @@ export function createInferenceClient(
   };
 }
 
+function normalizeGeminiMessages(messages: ChatMessage[]): ChatMessage[] {
+  const systemParts: string[] = [];
+  const nonSystem: ChatMessage[] = [];
+
+  for (const message of messages) {
+    if (message.role === "system") {
+      if (typeof message.content === "string" && message.content.trim()) {
+        systemParts.push(message.content.trim());
+      }
+      continue;
+    }
+    nonSystem.push(message);
+  }
+
+  if (systemParts.length === 0) return nonSystem;
+
+  return [
+    {
+      role: "system",
+      content: systemParts.join("\n\n"),
+    },
+    ...nonSystem,
+  ];
+}
+
 function formatMessage(
   msg: ChatMessage,
 ): Record<string, unknown> {
@@ -342,6 +369,7 @@ async function chatViaOpenAiCompatible(params: {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "x-goog-api-client": "ritty/1.0",
       Authorization:
         params.backend === "openai" ||
         params.backend === "groq" ||

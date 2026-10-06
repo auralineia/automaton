@@ -973,11 +973,57 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         }
 
         if (ctx.inputSource === "creator") {
+          if (work.type !== "creator-request") {
+            return JSON.stringify({
+              completed: false,
+              error: "CREATOR_WORK_MISMATCH",
+              message: "The active creator request points to a non-creator work item. Refusing to execute or complete unrelated work.",
+              workId: work.id,
+            }, null, 2);
+          }
+
+          const activeText = (work.title + " " + work.description)
+            .toLowerCase()
+            .replace(/[^a-z0-9à-ÿ]+/gi, " ");
+          const candidateText = [
+            typeof args.title === "string" ? args.title : "",
+            typeof args.description === "string" ? args.description : "",
+            typeof args.summary === "string" ? args.summary : "",
+            ...(Array.isArray(args.files)
+              ? (args.files as Array<{ path?: string; content?: string }>).map((file) =>
+                  (file.path || "") + " " + (file.content || ""),
+                )
+              : []),
+          ]
+            .join(" ")
+            .toLowerCase()
+            .replace(/[^a-z0-9à-ÿ]+/gi, " ");
+
+          const stopWords = new Set([
+            "criar","crie","site","loja","completo","completa","funcional",
+            "premium","desenvolver","desenvolvimento","projeto","produto",
+            "aplicacao","aplicação","para","com","uma","um","de","do","da",
+            "the","and","with","build","create","complete","functional",
+          ]);
+          const anchorTokens = activeText
+            .split(/\s+/)
+            .filter((token) => token.length >= 5 && !stopWords.has(token));
+
+          if (anchorTokens.length > 0 && !anchorTokens.some((token) => candidateText.includes(token))) {
+            return JSON.stringify({
+              completed: false,
+              error: "CREATOR_BUNDLE_MISMATCH",
+              message:
+                "The proposed work bundle does not match the active creator request. " +
+                "Refusing to execute an unrelated project. Re-read the active creator work and implement that exact request.",
+              workId: work.id,
+              title: work.title,
+              description: work.description,
+            }, null, 2);
+          }
+
           ctx.db.setKV("creator_work_id", work.id);
           ctx.db.setKV("creator_work_workspace", work.workspacePath);
-        }
-
-        if (ctx.inputSource === "creator") {
           ctx.db.setKV("creator_bundle_attempted", "1");
         }
 
