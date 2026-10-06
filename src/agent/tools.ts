@@ -3708,6 +3708,18 @@ export async function executeTool(
       };
     }
 
+    // Some sovereign models occasionally wrap an invoke_tool call inside
+    // another invoke_tool call. Unwrap one accidental layer so a malformed
+    // tool turn can still reach the intended concrete tool safely.
+    if (targetName === "invoke_tool") {
+      const nestedName = typeof targetArgs.tool_name === "string" ? targetArgs.tool_name : "";
+      const nestedRawArgs = targetArgs.arguments;
+      if (nestedName && nestedName !== "invoke_tool" && nestedRawArgs && typeof nestedRawArgs === "object" && !Array.isArray(nestedRawArgs)) {
+        targetName = nestedName;
+        targetArgs = { ...(nestedRawArgs as Record<string, unknown>) };
+      }
+    }
+
     if (!targetName || targetName === "invoke_tool") {
       return {
         id: ulid(),
