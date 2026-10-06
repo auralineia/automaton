@@ -51,6 +51,10 @@ const ORCHESTRATOR_TODO_KEY = "orchestrator.todo_md";
 const DEFAULT_TASK_FUNDING_CENTS = 25;
 const DEFAULT_MAX_REPLANS = 3;
 
+function isInferenceQuotaError(message: string): boolean {
+  return /\\[INFERENCE_QUOTA\\]|\\b429\\b|rate limit|quota exceeded|resource_exhausted|tokens per day|tokens per minute|tpd/i.test(message);
+}
+
 type ExecutionPhase =
   | "idle"
   | "classifying"
@@ -762,12 +766,39 @@ export class Orchestrator {
     }
 
     if (progress.failed > 0) {
+      const failedTaskId = state.failedTaskId ?? this.findFirstFailedTaskId(goal.id);
+      const failedTask = failedTaskId ? getTaskById(this.params.db, failedTaskId) : null;
+      const failedOutput = failedTask?.result?.output ?? state.failedError ?? "Task execution failed";
+
+      // Provider quota exhaustion is a global runtime condition, not a task bug.
+      // Do not replan it: replanning would immediately consume the same exhausted
+      // provider quota again. Put the autonomous runtime into durable backoff.
+      if (isInferenceQuotaError(failedOutput)) {
+        const backoffMs = 12 * 60 * 60 * 1000;
+        const backoffUntil = new Date(Date.now() + backoffMs).toISOString();
+        this.params.db.prepare(
+          "INSERT OR REPLACE INTO kv (key, value, updated_at) VALUES (?, ?, datetime('now'))",
+        ).run("inference_backoff_until", backoffUntil);
+        updateGoalStatus(this.params.db, goal.id, "failed");
+        logger.warn("[ORCHESTRATION] Inference quota exhausted; autonomous execution entering 12h backoff.", {
+          goalId: goal.id,
+          failedTaskId,
+          backoffUntil,
+        });
+        return {
+          ...state,
+          phase: "failed",
+          failedTaskId,
+          failedError: failedOutput,
+        };
+      }
+
       const maxReplans = this.getMaxReplans();
       return {
         ...state,
         phase: state.replanCount < maxReplans ? "replanning" : "failed",
-        failedTaskId: state.failedTaskId ?? this.findFirstFailedTaskId(goal.id),
-        failedError: state.failedError ?? "Task execution failed",
+        failedTaskId,
+        failedError: state.failedError ?? failedOutput,
       };
     }
 
