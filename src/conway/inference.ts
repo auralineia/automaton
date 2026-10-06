@@ -92,12 +92,16 @@ export function createInferenceClient(
       ollamaBaseUrl,
       getModelProvider,
     });
+    const effectiveModel =
+      backend === "gemini" && process.env.RITTY_MODE === "sovereign"
+        ? (process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.5-flash-lite")
+        : model;
 
     // Newer models (o-series, gpt-5.x, gpt-4.1) require max_completion_tokens.
     // Ollama always uses max_tokens.
     const usesCompletionTokens =
       backend === "groq" ||
-      (backend !== "ollama" && /^(o[1-9]|gpt-5|gpt-4\.1)/.test(model));
+      (backend !== "ollama" && /^(o[1-9]|gpt-5|gpt-4\.1)/.test(effectiveModel));
     const requestedTokenLimit = opts?.maxTokens || maxTokens;
     // Groq's current on-demand organization limits can reject a request when
     // prompt tokens plus requested completion tokens exceed the minute quota.
@@ -118,7 +122,7 @@ export function createInferenceClient(
       : messages;
 
     const body: Record<string, unknown> = {
-      model,
+      model: effectiveModel,
       messages: safeMessages.map(formatMessage),
       stream: false,
     };
@@ -140,7 +144,7 @@ export function createInferenceClient(
 
     if (backend === "anthropic") {
       return chatViaAnthropic({
-        model,
+        model: effectiveModel,
         tokenLimit,
         messages,
         tools,
@@ -169,7 +173,7 @@ export function createInferenceClient(
 
     try {
       return await chatViaOpenAiCompatible({
-        model,
+        model: effectiveModel,
         body,
         apiUrl: openAiLikeApiUrl,
         apiKey: openAiLikeApiKey,
@@ -284,8 +288,16 @@ function resolveInferenceBackend(
     getModelProvider?: (modelId: string) => string | undefined;
   },
 ): InferenceBackend {
-  // In sovereign RITTY mode, Conway registry records must never be allowed
-  // to route a Groq model back to the retired Conway endpoint.
+  // In sovereign RITTY mode prefer Gemini directly when a key is available.
+  // Groq was repeatedly timing out before fallback, wasting a full inference turn.
+  // Groq remains available as a fallback when Gemini is unavailable.
+  if (
+    process.env.RITTY_MODE === "sovereign" &&
+    keys.geminiApiKey &&
+    process.env.RITTY_SOVEREIGN_PRIMARY_PROVIDER !== "groq"
+  ) {
+    return "gemini";
+  }
   if (process.env.RITTY_MODE === "sovereign" && keys.groqApiKey) {
     return "groq";
   }
