@@ -83,6 +83,16 @@ export function createInferenceClient(
   ): Promise<InferenceResponse> => {
     const model = opts?.model || currentModel;
     const tools = opts?.tools;
+    const bypassCircuitBreaker = Boolean((opts as any)?.bypassCircuitBreaker);
+    const disableProviderFallback = Boolean((opts as any)?.disableProviderFallback);
+
+    const requestHttpClient = bypassCircuitBreaker
+      ? new ResilientHttpClient({
+          baseTimeout: INFERENCE_TIMEOUT_MS,
+          retryableStatuses: [429, 500, 502, 503, 504],
+          allowHttpOnLoopback: isLoopbackHttpUrl(ollamaBaseUrl),
+        })
+      : httpClient;
 
     const backend = resolveInferenceBackend(model, {
       openaiApiKey,
@@ -94,7 +104,9 @@ export function createInferenceClient(
     });
     const effectiveModel =
       backend === "gemini" && process.env.RITTY_MODE === "sovereign"
-        ? (process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.6-flash")
+        ? (/^gemini-/i.test(model)
+            ? model
+            : (process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.6-flash"))
         : model;
 
     // Newer models (o-series, gpt-5.x, gpt-4.1) require max_completion_tokens.
@@ -152,7 +164,7 @@ export function createInferenceClient(
         tools,
         temperature: opts?.temperature,
         anthropicApiKey: anthropicApiKey as string,
-        httpClient,
+        httpClient: requestHttpClient,
       });
     }
 
@@ -180,7 +192,7 @@ export function createInferenceClient(
         apiUrl: openAiLikeApiUrl,
         apiKey: openAiLikeApiKey,
         backend,
-        httpClient,
+        httpClient: requestHttpClient,
         retries: process.env.RITTY_MODE === "sovereign" && (backend === "groq" || backend === "gemini")
           ? SOVEREIGN_PROVIDER_RETRIES
           : undefined,
@@ -193,7 +205,8 @@ export function createInferenceClient(
       if (
         backend === "groq" &&
         process.env.RITTY_MODE === "sovereign" &&
-        geminiApiKey
+        geminiApiKey &&
+        !disableProviderFallback
       ) {
         const groqMessage = error instanceof Error ? error.message : String(error);
         const fallbackModel = process.env.RITTY_GEMINI_FALLBACK_MODEL || "gemini-3.5-flash-lite";

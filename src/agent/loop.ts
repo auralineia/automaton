@@ -1568,7 +1568,9 @@ export async function runAgentLoop(
               model: creatorModel,
               maxTokens: 7000,
               tools: inferenceTools,
-            });
+              bypassCircuitBreaker: true,
+              disableProviderFallback: true,
+            } as any);
             break;
           } catch (error) {
             lastCreatorInferenceError = error;
