@@ -761,6 +761,163 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
       },
     },
 
+    // ── Durable Work Engine ──
+    {
+      name: "work_create",
+      description: "Create a durable job with its own persistent workspace, manifest, success criteria and resume state.",
+      category: "memory",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          type: { type: "string" },
+          goal_id: { type: "string" },
+          repo_path: { type: "string" },
+          customer: { type: "string" },
+          success_criteria: { type: "string" },
+        },
+        required: ["title", "description"],
+      },
+      execute: async (args, ctx) => {
+        const { createWork } = await import("../orchestration/work-engine.js");
+        const work = createWork(ctx.db, {
+          title: String(args.title || ""),
+          description: String(args.description || ""),
+          type: typeof args.type === "string" ? args.type : undefined,
+          goalId: typeof args.goal_id === "string" ? args.goal_id : undefined,
+          repoPath: typeof args.repo_path === "string" ? args.repo_path : undefined,
+          customer: typeof args.customer === "string" ? args.customer : undefined,
+          successCriteria: typeof args.success_criteria === "string" ? args.success_criteria : undefined,
+        });
+        return JSON.stringify(work, null, 2);
+      },
+    },
+    {
+      name: "work_status",
+      description: "Show durable work status, last checkpoint and workspace path.",
+      category: "memory",
+      riskLevel: "safe",
+      parameters: { type: "object", properties: { work_id: { type: "string" } }, required: ["work_id"] },
+      execute: async (args, ctx) => {
+        const { getWork } = await import("../orchestration/work-engine.js");
+        const work = getWork(ctx.db, String(args.work_id));
+        return work ? JSON.stringify(work, null, 2) : `Work not found: ${args.work_id}`;
+      },
+    },
+    {
+      name: "work_resume",
+      description: "Recover the exact durable context needed to continue an interrupted job without restarting completed work.",
+      category: "memory",
+      riskLevel: "safe",
+      parameters: { type: "object", properties: { work_id: { type: "string" } }, required: ["work_id"] },
+      execute: async (args, ctx) => {
+        const { getWorkResumeContext } = await import("../orchestration/work-engine.js");
+        return getWorkResumeContext(ctx.db, String(args.work_id));
+      },
+    },
+    {
+      name: "work_checkpoint",
+      description: "Persist a milestone, diagnosis, blocker, test result or next action.",
+      category: "memory",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          work_id: { type: "string" },
+          stage: { type: "string" },
+          status: { type: "string" },
+          note: { type: "string" },
+          payload: { type: "object" },
+        },
+        required: ["work_id", "stage", "status", "note"],
+      },
+      execute: async (args, ctx) => {
+        const { checkpointWork } = await import("../orchestration/work-engine.js");
+        checkpointWork(ctx.db, String(args.work_id), String(args.stage), String(args.status), String(args.note), args.payload as Record<string, unknown> | undefined);
+        return `Checkpoint saved: ${args.work_id}/${args.stage}`;
+      },
+    },
+    {
+      name: "work_artifact",
+      description: "Register a file, folder or URL as a durable deliverable.",
+      category: "memory",
+      riskLevel: "safe",
+      parameters: {
+        type: "object",
+        properties: {
+          work_id: { type: "string" },
+          path: { type: "string" },
+          kind: { type: "string" },
+          label: { type: "string" },
+          metadata: { type: "object" },
+        },
+        required: ["work_id", "path"],
+      },
+      execute: async (args, ctx) => {
+        const { recordWorkArtifact } = await import("../orchestration/work-engine.js");
+        recordWorkArtifact(ctx.db, String(args.work_id), String(args.path), typeof args.kind === "string" ? args.kind : "deliverable", typeof args.label === "string" ? args.label : undefined, args.metadata as Record<string, unknown> | undefined);
+        return `Artifact recorded: ${args.path}`;
+      },
+    },
+    {
+      name: "work_test",
+      description: "Run and persist a build/test/validation command with exit code and logs.",
+      category: "vm",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          work_id: { type: "string" },
+          command: { type: "string" },
+          cwd: { type: "string" },
+          timeout_ms: { type: "number" },
+        },
+        required: ["work_id", "command"],
+      },
+      execute: async (args, ctx) => {
+        const { runTrackedTest } = await import("../orchestration/work-engine.js");
+        return runTrackedTest(ctx.db, String(args.work_id), String(args.command), typeof args.cwd === "string" ? args.cwd : process.cwd(), typeof args.timeout_ms === "number" ? args.timeout_ms : 120000, ctx.conway);
+      },
+    },
+    {
+      name: "work_publish",
+      description: "Publish a validated work item to Vercel, Railway, or git. Production publish requires explicit approved=true.",
+      category: "vm",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          work_id: { type: "string" },
+          target: { type: "string", enum: ["vercel", "railway", "git"] },
+          project_path: { type: "string" },
+          approved: { type: "boolean" },
+        },
+        required: ["work_id", "target", "project_path", "approved"],
+      },
+      execute: async (args, ctx) => {
+        const { publishWork } = await import("../orchestration/work-engine.js");
+        return publishWork(ctx.db, String(args.work_id), args.target as "vercel" | "railway" | "git", String(args.project_path), args.approved === true, ctx.conway);
+      },
+    },
+    {
+      name: "work_complete",
+      description: "Close a durable work item only after verification and delivery.",
+      category: "memory",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: { work_id: { type: "string" }, success: { type: "boolean" }, summary: { type: "string" } },
+        required: ["work_id", "success", "summary"],
+      },
+      execute: async (args, ctx) => {
+        const { completeWork } = await import("../orchestration/work-engine.js");
+        const work = completeWork(ctx.db, String(args.work_id), args.success !== false, String(args.summary));
+        return JSON.stringify(work, null, 2);
+      },
+    },
+
     // ── Revenue Acquisition Engine ──
     {
       name: "revenue_autopilot_cycle",
