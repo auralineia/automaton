@@ -315,9 +315,18 @@ function resolveInferenceBackend(
     getModelProvider?: (modelId: string) => string | undefined;
   },
 ): InferenceBackend {
-  // In sovereign RITTY mode prefer Gemini directly when a key is available.
-  // Groq was repeatedly timing out before fallback, wasting a full inference turn.
-  // Groq remains available as a fallback when Gemini is unavailable.
+  // In sovereign RITTY mode, an explicitly Groq-native model must stay on Groq
+  // even when Gemini is configured as the normal sovereign primary. This gives
+  // creator execution a real cross-provider escape hatch after Gemini quotas or
+  // capacity errors.
+  if (
+    process.env.RITTY_MODE === "sovereign" &&
+    keys.groqApiKey &&
+    /^openai\/gpt-oss/i.test(model)
+  ) {
+    return "groq";
+  }
+
   if (
     process.env.RITTY_MODE === "sovereign" &&
     keys.geminiApiKey &&
