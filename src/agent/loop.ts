@@ -23,6 +23,7 @@ import type {
   SpendTrackerInterface,
   InputSource,
   ModelStrategyConfig,
+  ChatMessage,
 } from "../types.js";
 import { DEFAULT_MODEL_STRATEGY_CONFIG } from "../types.js";
 import type { PolicyEngine } from "./policy-engine.js";
@@ -1043,29 +1044,69 @@ export async function runAgentLoop(
         isFirstRun,
       });
 
-      // Phase 2.2: Pre-turn memory retrieval
+      // Creator work is an explicit command path. Do not drag the entire
+      // autonomous memory/history into it: oversized tool-enabled prompts were
+      // causing long inference stalls and made unrelated autonomous work leak
+      // into creator tasks.
       let memoryBlock: string | undefined;
-      try {
-        const sessionId = db.getKV("session_id") || "default";
-        const retriever = new MemoryRetriever(db.raw, DEFAULT_MEMORY_BUDGET);
-        const memories = retriever.retrieve(sessionId, pendingInput?.content);
-        if (memories.totalTokens > 0) {
-          memoryBlock = formatMemoryBlock(memories);
+      if (pendingInput?.source !== "creator" && !creatorTaskActive) {
+        try {
+          const sessionId = db.getKV("session_id") || "default";
+          const retriever = new MemoryRetriever(db.raw, DEFAULT_MEMORY_BUDGET);
+          const memories = retriever.retrieve(sessionId, pendingInput?.content);
+          if (memories.totalTokens > 0) {
+            memoryBlock = formatMemoryBlock(memories);
+          }
+        } catch (error) {
+          logger.error("Memory retrieval failed", error instanceof Error ? error : undefined);
+          // Memory failure must not block the agent loop
         }
-      } catch (error) {
-        logger.error("Memory retrieval failed", error instanceof Error ? error : undefined);
-        // Memory failure must not block the agent loop
       }
 
-      let messages = buildContextMessages(
-        systemPrompt,
-        recentTurns,
-        pendingInput,
-      );
+      const creatorExecutionRequested =
+        pendingInput?.source === "creator" || creatorTaskActive;
 
-      // Inject memory block after system prompt, before conversation history
-      if (memoryBlock) {
-        messages.splice(1, 0, { role: "system", content: memoryBlock });
+      let messages: ChatMessage[];
+      if (creatorExecutionRequested) {
+        const creatorRequest =
+          pendingInput?.content ||
+          db.getKV("creator_task_active") ||
+          "Continue the active creator task from the durable work state.";
+
+        messages = [
+          {
+            role: "system",
+            content:
+              "You are RITTY executing an explicit creator command. " +
+              "Act immediately; do not plan, explain, inspect the environment, check credits, create autonomous goals, sleep, or perform financial operations. " +
+              "For a new deliverable, call work_create once if no creator work exists, then use work_execute to write the actual files, run a real validation command, register artifacts, and complete only after the validation passes. " +
+              "For an interrupted creator job, resume the existing creator work instead of starting over. " +
+              "Use the persistent workspace returned by the work tools. Do not touch RITTY runtime files, secrets, wallet data, or the database. " +
+              "Prefer one concrete work_execute call with all required files for small deterministic deliverables. Continue on later turns until the requested work is genuinely complete.",
+          },
+          { role: "user", content: creatorRequest },
+        ];
+      } else {
+        const systemPrompt = buildSystemPrompt({
+          identity,
+          config,
+          financial,
+          state: db.getAgentState(),
+          db,
+          tools,
+          skills,
+          isFirstRun,
+        });
+
+        messages = buildContextMessages(
+          systemPrompt,
+          recentTurns,
+          pendingInput,
+        );
+
+        if (memoryBlock) {
+          messages.splice(1, 0, { role: "system", content: memoryBlock });
+        }
       }
 
       // Recover stale orchestration work even while a creator command is active.
@@ -1372,9 +1413,29 @@ export async function runAgentLoop(
         !isCreatorExecution &&
         getActiveGoals(db.raw).length > 0;
 
-      const creatorWorkActive = isCreatorExecution && !!db.raw.prepare(
-        "SELECT 1 FROM work_items WHERE status NOT IN ('completed','failed') ORDER BY updated_at DESC LIMIT 1",
-      ).get();
+      const creatorWorkId = isCreatorExecution ? db.getKV("creator_work_id") : null;
+      const creatorWorkRow = creatorWorkId
+        ? db.raw.prepare(
+            "SELECT id,status,type,goal_id FROM work_items WHERE id=? LIMIT 1",
+          ).get(creatorWorkId) as { id?: string; status?: string; type?: string; goal_id?: string | null } | undefined
+        : undefined;
+      const creatorWorkActive =
+        isCreatorExecution &&
+        !!creatorWorkRow &&
+        creatorWorkRow.type === "creator-request" &&
+        !creatorWorkRow.goal_id &&
+        creatorWorkRow.status !== "completed" &&
+        creatorWorkRow.status !== "failed";
+
+      // Older builds could incorrectly persist an autonomous work id in the
+      // creator slot. Clear that stale pointer before exposing creator tools.
+      if (isCreatorExecution && creatorWorkId && !creatorWorkActive) {
+        db.deleteKV("creator_work_id");
+        db.deleteKV("creator_work_workspace");
+        db.deleteKV("creator_work_status_seen");
+        db.deleteKV("creator_bundle_attempted");
+      }
+
       const creatorWorkStatusSeen = db.getKV("creator_work_status_seen") === "1";
       const creatorBundleAttempted = db.getKV("creator_bundle_attempted") === "1";
       const inferenceToolSource =
@@ -1399,6 +1460,7 @@ export async function runAgentLoop(
           messages: messages,
           taskType: "agent_turn",
           tier: survivalTier,
+          maxTokens: isCreatorExecution ? 7000 : undefined,
           sessionId: db.getKV("session_id") || "default",
           turnId: ulid(),
           tools: inferenceTools,
