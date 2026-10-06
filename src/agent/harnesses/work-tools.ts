@@ -4,10 +4,23 @@ import type { HarnessContext, HarnessTool } from "../harness-types.js";
 function resolveWorkId(context: HarnessContext, explicit?: string): string | null {
   if (explicit) return explicit;
   ensureWorkSchema(context.db);
-  const row = context.db.prepare(
+
+  const goalRow = context.db.prepare(
     "SELECT id FROM work_items WHERE goal_id=? ORDER BY updated_at DESC LIMIT 1",
   ).get(context.goalId) as { id?: string } | undefined;
-  return row?.id || null;
+  if (goalRow?.id) return goalRow.id;
+
+  // Creator messages can arrive without a goal id. In that case keep the
+  // durable workflow attached to the most recently updated unfinished work
+  // item instead of forcing the model to rediscover an opaque ULID.
+  if (context.inputSource === "creator") {
+    const latest = context.db.prepare(
+      "SELECT id FROM work_items WHERE status NOT IN ('completed','failed') ORDER BY updated_at DESC LIMIT 1",
+    ).get() as { id?: string } | undefined;
+    return latest?.id || null;
+  }
+
+  return null;
 }
 
 export function createWorkHarnessTools(context: HarnessContext): HarnessTool[] {
