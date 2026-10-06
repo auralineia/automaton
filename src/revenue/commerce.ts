@@ -544,7 +544,7 @@ export async function prepareOutreach(
     .get(offer.id) as any;
 
   const destination = String(lead.email || lead.contact || lead.contact_url || "").trim();
-  const channel = args.channel || "email";
+  const channel = args.channel || (lead.email ? "email" : "manual");
   const subject = "Uma ideia rápida para " + lead.name;
   const body = [
     "Olá, " + lead.name + ".",
