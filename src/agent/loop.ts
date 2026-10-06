@@ -1204,7 +1204,7 @@ export async function runAgentLoop(
             role: "system",
             content:
               "You are RITTY executing an explicit creator command. " +
-              "Act immediately; do not plan, explain, inspect the environment, check credits, create autonomous goals, sleep, or perform financial operations. " +
+              "Act immediately; do not plan, explain, inspect the environment, check credits, create autonomous goals, or sleep. Do not spend RITTY funds. " +
               "For a new deliverable, call work_create once if no creator work exists, then use work_execute to write the actual files, run a real validation command, register artifacts, and complete only after the validation passes. " +
               "For website requests, prefer work_execute with a compact site specification (brand, category, colors, tagline, products) instead of huge inline HTML/CSS/JS files. The runtime will generate and test the site files. When work_execute returns a previewUrl, include that URL in the creator-facing response. " +
               "For an interrupted creator job, resume the existing creator work instead of starting over. " +
