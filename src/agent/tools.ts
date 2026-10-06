@@ -24,6 +24,11 @@ import { sanitizeToolResult, sanitizeInput } from "./injection-defense.js";
 import { createLogger } from "../observability/logger.js";
 
 const logger = createLogger("tools");
+const REAL_FINANCIAL_OPERATIONS_ENABLED = process.env.RITTY_ALLOW_FINANCIAL_OPS === "true";
+function financialOperationBlocked(action: string): string | null {
+  if (REAL_FINANCIAL_OPERATIONS_ENABLED) return null;
+  return `Blocked by RITTY safety mode: real financial operation "${action}" is disabled. No transfers, top-ups, wallet movements, trades, or purchases are allowed.`;
+}
 
 // ─── Path Confinement ─────────────────────────────────────────
 // write_file is restricted to the sandbox home directory tree.
@@ -298,6 +303,8 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         required: ["amount_usd"],
       },
       execute: async (args, ctx) => {
+        const blocked = financialOperationBlocked("topup_credits");
+        if (blocked) return blocked;
         // Solana guard: x402 topup is EVM-only
         const chainType = ctx.config.chainType || ctx.identity.chainType || "evm";
         if (chainType === "solana") {
@@ -759,7 +766,7 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
       name: "revenue_autopilot_cycle",
       description:
         "Run one safe revenue-acquisition cycle: search public business prospects, research their public websites, score the best opportunity, and generate a sales proposal. It never sends outreach, charges anyone, purchases anything, trades, transfers funds, or moves a wallet.",
-      category: "general",
+      category: "memory",
       riskLevel: "caution",
       parameters: {
         type: "object",
@@ -1109,6 +1116,8 @@ Model: ${ctx.inference.getDefaultModel()}
         required: ["to_address", "amount_cents"],
       },
       execute: async (args, ctx) => {
+        const blocked = financialOperationBlocked("transfer_credits");
+        if (blocked) return blocked;
         const amount = args.amount_cents as number;
         if (!Number.isFinite(amount) || amount <= 0) {
           return `Blocked: amount_cents must be a positive number, got ${amount}.`;
@@ -1825,6 +1834,8 @@ Model: ${ctx.inference.getDefaultModel()}
         required: ["child_id", "amount_cents"],
       },
       execute: async (args, ctx) => {
+        const blocked = financialOperationBlocked("fund_child");
+        if (blocked) return blocked;
         const child = ctx.db.getChildById(args.child_id as string);
         if (!child) return `Child ${args.child_id} not found.`;
 
