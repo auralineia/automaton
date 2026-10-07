@@ -357,7 +357,17 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
   if (!candidates.length) return `Revenue engine searched ${searchResults.length} public results but could not research a usable prospect.`;
 
   candidates.sort((a, b) => b.score - a.score);
-  let best: { id: string; score: number; name: string; website: string; reasons: string[] } | null = null;
+  let best: {
+    id: string;
+    score: number;
+    name: string;
+    website: string;
+    reasons: string[];
+    opportunity: string;
+    services: string;
+    businessType: string;
+    siteAnalysis: string;
+  } | null = null;
   for (const candidate of candidates.slice(0, 3)) {
     const activeOffer = db.raw.prepare(
       "SELECT id,status FROM revenue_offers WHERE lead_id=? AND status NOT IN ('cancelled','failed') ORDER BY created_at DESC LIMIT 1",
@@ -365,14 +375,18 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
     if (activeOffer) continue;
     try {
       await enrichLead(db, candidate.id);
-      const enriched = db.raw.prepare("SELECT id,name,website,email,phone,contact,contact_url FROM revenue_leads WHERE id=?").get(candidate.id) as any;
+      const enriched = db.raw.prepare("SELECT id,name,website,email,phone,contact,contact_url,opportunity,site_analysis,services,business_type,site_score FROM revenue_leads WHERE id=?").get(candidate.id) as any;
       if (enriched && (enriched.email || enriched.phone || enriched.contact || enriched.contact_url)) {
         best = {
-          id: candidate.id,
-          score: candidate.score,
+          id: enriched.id,
+          score: Number(enriched.site_score || candidate.score || 0),
           name: enriched.name || candidate.name,
           website: enriched.website || candidate.website,
           reasons: candidate.reasons,
+          opportunity: String(enriched.opportunity || ""),
+          services: String(enriched.services || "[]"),
+          businessType: String(enriched.business_type || "negócio local"),
+          siteAnalysis: String(enriched.site_analysis || "{}"),
         };
         break;
       }
@@ -394,24 +408,44 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
   const offerDir = path.join(REVENUE_ROOT, "offers");
   fs.mkdirSync(offerDir, { recursive: true });
   const proposalPath = path.join(offerDir, `${safeName}-${offerId}.md`);
+  let proposalAnalysis: any = {};
+  try { proposalAnalysis = JSON.parse(best.siteAnalysis || "{}"); } catch {}
+  let proposalServices: string[] = [];
+  try { proposalServices = JSON.parse(best.services || "[]"); } catch {}
+  const proposalIssues = Array.isArray(proposalAnalysis.priorities) ? proposalAnalysis.priorities.slice(0, 4) : [];
+  const proposalStrengths = Array.isArray(proposalAnalysis.strengths) ? proposalAnalysis.strengths.slice(0, 4) : [];
   const proposal = [
     "# RITTY — Proposta de melhoria digital",
     "",
     `Cliente/prospect: ${best.name}`,
     `Site analisado: ${best.website}`,
-    `Score da oportunidade: ${best.score}/100`,
+    `Perfil detectado: ${best.businessType}`,
+    `Índice de oportunidade: ${best.score}/100`,
     "",
-    "## Evidências encontradas",
-    ...best.reasons.map((x) => `- ${x}`),
+    "## Diagnóstico comercial",
+    best.opportunity || "Melhorar a clareza da oferta e o caminho até o contato.",
     "",
-    "## Oferta",
-    "- Landing page/site profissional focado em conversão.",
-    "- Estrutura mobile-first.",
-    "- CTA direto para WhatsApp/contato.",
-    "- Performance, SEO básico e analytics.",
-    "- Publicação de uma versão demonstrável antes do fechamento.",
+    "### Pontos que já funcionam",
+    ...(proposalStrengths.length ? proposalStrengths.map((x) => "- " + x) : ["- Há uma presença digital existente que pode ser aproveitada."]),
     "",
-    `Preço sugerido: R$ ${(priceCents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+    "### Pontos prioritários para corrigir",
+    ...(proposalIssues.length ? proposalIssues.map((x) => "- " + x) : best.reasons.map((x) => "- " + x)),
+    "",
+    "### Serviços detectados no site",
+    ...(proposalServices.length ? proposalServices.map((x) => "- " + x) : ["- Conteúdo de serviço precisa ser reorganizado na versão final."]),
+    "",
+    "## Escopo proposto",
+    "- Redesign da página principal com hierarquia comercial clara.",
+    "- Estrutura mobile-first e responsiva.",
+    "- CTA principal conectado ao canal real da empresa.",
+    "- Seções de oferta, confiança/provas e contato.",
+    "- SEO técnico básico, metadados e compartilhamento.",
+    "- Publicação da versão final após aprovação do cliente.",
+    "",
+    "## Demonstração",
+    "Uma prévia navegável é gerada pelo RITTY antes do fechamento para facilitar a decisão.",
+    "",
+    `Investimento sugerido: R$ ${(priceCents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
     "",
     "## Próximo passo",
     "Revisão humana antes de qualquer contato externo. Nenhuma mensagem foi enviada automaticamente.",

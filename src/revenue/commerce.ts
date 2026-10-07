@@ -99,6 +99,10 @@ export function ensureRevenueCommerceSchema(db: AutomatonDatabase): void {
   ensureColumn(db, "revenue_leads", "evidence_url", "TEXT");
   ensureColumn(db, "revenue_offers", "preview_url", "TEXT");
   ensureColumn(db, "revenue_offers", "checkout_url", "TEXT");
+  ensureColumn(db, "revenue_leads", "site_analysis", "TEXT");
+  ensureColumn(db, "revenue_leads", "services", "TEXT");
+  ensureColumn(db, "revenue_leads", "business_type", "TEXT");
+  ensureColumn(db, "revenue_leads", "site_score", "INTEGER");
 
   fs.mkdirSync(path.join(REVENUE_ROOT, "offers"), { recursive: true });
   fs.mkdirSync(path.join(REVENUE_ROOT, "demos"), { recursive: true });
@@ -280,6 +284,157 @@ function escAttr(input: string): string {
   return escHtml(input).replace(/'/g, "&#39;");
 }
 
+
+function extractMetaContent(html: string, name: string): string {
+  const re = new RegExp("<meta[^>]+(?:name|property)=[\"']" + name + "[\"'][^>]+content=[\"']([^\"']+)[\"'][^>]*>", "i");
+  return decodeHtml(html.match(re)?.[1] || "").trim().slice(0, 320);
+}
+
+function extractHeadings(html: string): string[] {
+  return Array.from(html.matchAll(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi))
+    .map((m) => decodeHtml(m[1] || "").replace(/\s+/g, " ").trim())
+    .filter((x) => x.length >= 3 && x.length <= 140)
+    .slice(0, 18);
+}
+
+function inferBusinessProfile(title: string, text: string, headings: string[]): { type: string; services: string[] } {
+  const lower = (title + " " + text + " " + headings.join(" ")).toLowerCase();
+  const rules: Array<[RegExp, string]> = [
+    [/(restaurante|pizzaria|hamburguer|bar|cafeteria|padaria|delivery|gastronomia)/i, "gastronomia"],
+    [/(clínica|clinica|odontologia|dentista|fisioterapia|psicologia|médico|medico)/i, "saúde"],
+    [/(estética|estetica|beleza|salão|salao|barbearia|cabelo|unhas)/i, "beleza e estética"],
+    [/(imobiliária|imobiliaria|corretor|apartamento|loteamento|imóveis|imoveis)/i, "imobiliário"],
+    [/(advocacia|advogado|jurídico|juridico|escritório de advocacia)/i, "serviços jurídicos"],
+    [/(contabilidade|contador|contábil|contabil|financeiro)/i, "contabilidade e finanças"],
+    [/(automotivo|auto center|oficina|funilaria|lava[- ]?jato|estética automotiva|mecânica|mecanica)/i, "automotivo"],
+    [/(construção|construcao|engenharia|arquitetura|reformas?|obra)/i, "construção e engenharia"],
+    [/(limpeza|facilities|conservação|conservacao|terceirização|terceirizacao)/i, "serviços"],
+    [/(escola|curso|educação|educacao|faculdade|treinamento)/i, "educação"],
+    [/(software|saas|tecnologia|tecnologia da informação|desenvolvimento de software)/i, "tecnologia"],
+    [/(loja|e-commerce|ecommerce|comprar|produtos|catálogo|catalogo)/i, "varejo"],
+  ];
+  const type = rules.find(([re]) => re.test(lower))?.[1] || "negócio local";
+  const generic = /^(home|início|inicio|sobre nós|sobre|contato|fale conosco|serviços|servicos|produtos|quem somos|nossos serviços|nossos servicos|menu)$/i;
+  const services = Array.from(new Set(
+    headings
+      .map((x) => x.replace(/\s+/g, " ").trim())
+      .filter((x) => x.length >= 4 && x.length <= 70 && !generic.test(x))
+      .slice(0, 6),
+  ));
+  return { type, services };
+}
+
+function analyzeSite(page: {
+  title: string;
+  text: string;
+  html: string;
+  status: number;
+  url: string;
+  emails: string[];
+  phones: string[];
+  whatsapp: string | null;
+  contactUrl: string | null;
+  socials: string[];
+}): {
+  score: number;
+  businessType: string;
+  services: string[];
+  metaDescription: string;
+  h1: string[];
+  strengths: string[];
+  issues: string[];
+  priorities: string[];
+  evidence: Record<string, unknown>;
+  primaryOpportunity: string;
+} {
+  const headings = extractHeadings(page.html);
+  const h1 = Array.from(page.html.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/gi))
+    .map((m) => decodeHtml(m[1] || "").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .slice(0, 5);
+  const metaDescription = extractMetaContent(page.html, "description");
+  const lower = (page.html + " " + page.text).toLowerCase();
+  const ctaTerms = Array.from(page.text.match(/\b(comprar|orçamento|orcamento|contato|whatsapp|fale conosco|agendar|solicitar|reservar|pedir|atendimento)\b/gi) || []);
+  const imageMatches = Array.from(page.html.matchAll(/<img\b[^>]*>/gi)).map((m) => m[0]);
+  const imagesWithoutAlt = imageMatches.filter((x) => !/\balt\s*=\s*["'][^"']+["']/i.test(x)).length;
+  const titleLength = page.title.trim().length;
+  const wordCount = page.text.split(/\s+/).filter(Boolean).length;
+  const profile = inferBusinessProfile(page.title, page.text, headings);
+
+  let score = 82;
+  const issues: string[] = [];
+  const strengths: string[] = [];
+
+  if (!/^https:\/\//i.test(page.url)) { score -= 7; issues.push("O site ainda não termina em HTTPS."); }
+  else strengths.push("HTTPS ativo.");
+  if (!/<meta[^>]+name=["']viewport["'][^>]*>/i.test(page.html)) { score -= 10; issues.push("A estrutura não declara meta viewport; isso pode prejudicar a experiência mobile."); }
+  else strengths.push("Meta viewport detectada.");
+  if (!h1.length) { score -= 9; issues.push("Não foi identificado um H1 claro para explicar a proposta principal da página."); }
+  else if (h1.length > 1) { score -= 4; issues.push("Há mais de um H1; a hierarquia da mensagem principal pode ficar menos clara."); }
+  else strengths.push("Uma mensagem principal em H1 foi detectada.");
+  if (!metaDescription) { score -= 6; issues.push("Não foi identificada uma meta description útil para busca/compartilhamento."); }
+  else strengths.push("Meta description presente.");
+  if (titleLength < 18 || titleLength > 70) { score -= 4; issues.push("O título da página está pouco orientado a clareza/descoberta."); }
+  else strengths.push("Título da página com tamanho razoável.");
+  if (!ctaTerms.length) { score -= 13; issues.push("Não foi detectado um CTA comercial claro (ex.: orçamento, agendamento, WhatsApp ou compra)."); }
+  else strengths.push("CTA/ação comercial detectado.");
+  if (!page.emails.length && !page.phones.length && !page.whatsapp && !page.contactUrl) { score -= 12; issues.push("Não foi localizado um canal direto de contato no HTML público."); }
+  else strengths.push("Canal de contato público detectado.");
+  if (page.whatsapp) strengths.push("WhatsApp público detectado.");
+  if (page.socials.length) strengths.push("Redes sociais públicas vinculadas.");
+  if (!/canonical/i.test(page.html)) { score -= 3; issues.push("Não foi detectada uma URL canônica."); }
+  if (!/og:title/i.test(page.html)) { score -= 2; issues.push("Não foi detectado og:title para compartilhamento social."); }
+  if (imageMatches.length >= 4 && imagesWithoutAlt / imageMatches.length > 0.35) { score -= 4; issues.push("Parte relevante das imagens não possui alt text detectável."); }
+  if (wordCount < 250) { score -= 7; issues.push("O conteúdo visível é curto; falta contexto para explicar oferta, diferenciais e confiança."); }
+  else strengths.push("Conteúdo textual suficiente para análise comercial.");
+  if (/site em construção|under construction|coming soon|em breve|em manutenção|em manutenc/i.test(lower)) { score -= 12; issues.push("Há sinais de presença digital incompleta/manutenção."); }
+
+  const uniqueIssues = Array.from(new Set(issues)).slice(0, 8);
+  const priorities = uniqueIssues.slice(0, 3);
+  const evidence = {
+    pageTitle: page.title,
+    h1,
+    metaDescription: metaDescription || null,
+    ctaTerms: Array.from(new Set(ctaTerms.map((x) => x.toLowerCase()))).slice(0, 8),
+    detectedEmails: page.emails.slice(0, 3),
+    detectedPhones: page.phones.slice(0, 3),
+    whatsapp: Boolean(page.whatsapp),
+    socialCount: page.socials.length,
+    headings: headings.slice(0, 8),
+    wordCount,
+    images: imageMatches.length,
+    imagesWithoutAlt,
+    httpStatus: page.status,
+    checkedUrl: page.url,
+  };
+
+  let primaryOpportunity =
+    priorities[0] ||
+    "Organizar melhor a apresentação da oferta e criar uma jornada mais clara para transformar visita em contato.";
+  if (/CTA/i.test(primaryOpportunity) || /orçamento|agendamento|whatsapp|compra/i.test(primaryOpportunity)) {
+    primaryOpportunity = "A página apresenta a empresa, mas o próximo passo comercial não fica claro o bastante. A principal melhoria é tornar oferta + CTA visíveis logo no primeiro contato com o visitante.";
+  } else if (/mobile|viewport/i.test(primaryOpportunity)) {
+    primaryOpportunity = "A experiência mobile precisa de uma base mais consistente. A primeira melhoria é reorganizar a hierarquia e os CTAs para telas pequenas, priorizando leitura e ação.";
+  } else if (/meta description|título|URL canônica|og:title/i.test(primaryOpportunity)) {
+    primaryOpportunity = "A estrutura técnica e de descoberta pode comunicar melhor a empresa. A primeira melhoria é alinhar título, descrição, hierarquia e conteúdo para facilitar entendimento e compartilhamento.";
+  } else if (/conteúdo|contexto/i.test(primaryOpportunity)) {
+    primaryOpportunity = "O site explica pouco sobre oferta e diferenciais. A primeira melhoria é transformar o conteúdo em uma jornada comercial: o que a empresa faz, por que escolher e como entrar em contato.";
+  }
+
+  return {
+    score: Math.max(25, Math.min(98, score)),
+    businessType: profile.type,
+    services: profile.services,
+    metaDescription,
+    h1,
+    strengths: Array.from(new Set(strengths)).slice(0, 8),
+    issues: uniqueIssues,
+    priorities,
+    evidence,
+    primaryOpportunity,
+  };
+}
+
 function safeProjectName(name: string): string {
   return (
     "ritty-" +
@@ -298,15 +453,11 @@ async function enrichLeadInternal(db: AutomatonDatabase, leadId: string): Promis
   if (!lead.website) throw new Error("Lead has no public website URL to research.");
 
   const page = await fetchPublicPage(String(lead.website));
+  const analysis = analyzeSite(page);
   const email = page.emails[0] || null;
   const phone = page.phones[0] || null;
   const contact = email || phone || page.whatsapp || page.contactUrl || null;
-
-  const opportunity =
-    String(lead.opportunity || "").trim() ||
-    (page.signals.includes("Não foi detectado um CTA comercial claro.")
-      ? "Criar uma jornada comercial mais clara com CTA e apresentação de oferta."
-      : "Melhorar a apresentação comercial e a conversão da presença digital.");
+  const opportunity = String(lead.opportunity || "").trim() || analysis.primaryOpportunity;
 
   const evidence = {
     source: page.url,
@@ -319,23 +470,25 @@ async function enrichLeadInternal(db: AutomatonDatabase, leadId: string): Promis
     researchedAt: now(),
   };
 
-  db.raw
-    .prepare(
-      "UPDATE revenue_leads SET name=?,website=?,contact=?,email=?,phone=?,contact_url=?,opportunity=?,evidence_url=?,notes=?,updated_at=? WHERE id=?",
-    )
-    .run(
-      page.title || lead.name,
-      page.url,
-      contact,
-      email,
-      phone,
-      page.contactUrl || page.whatsapp || null,
-      opportunity,
-      page.url,
-      JSON.stringify(evidence),
-      now(),
-      lead.id,
-    );
+  db.raw.prepare(
+    "UPDATE revenue_leads SET name=?,website=?,contact=?,email=?,phone=?,contact_url=?,opportunity=?,evidence_url=?,site_analysis=?,services=?,business_type=?,site_score=?,notes=?,updated_at=? WHERE id=?",
+  ).run(
+    page.title || lead.name,
+    page.url,
+    contact,
+    email,
+    phone,
+    page.contactUrl || page.whatsapp || null,
+    opportunity,
+    page.url,
+    JSON.stringify(analysis),
+    JSON.stringify(analysis.services),
+    analysis.businessType,
+    analysis.score,
+    JSON.stringify(evidence),
+    now(),
+    lead.id,
+  );
 
   return getLead(db, lead.id);
 }
@@ -345,70 +498,68 @@ function buildDemoSite(lead: any): {
   title: string;
 } {
   const name = String(lead.name || "Sua Empresa").trim().slice(0, 90);
-  const opportunity = String(
-    lead.opportunity || "Uma presença digital mais clara e orientada à conversão.",
-  )
-    .replace(/\s+/g, " ")
-    .slice(0, 320);
+  const type = String(lead.business_type || "negócio local").trim();
+  const opportunity = String(lead.opportunity || "Uma presença digital mais clara e orientada à conversão.").replace(/\s+/g, " ").slice(0, 360);
+  let analysis: any = {};
+  try { analysis = JSON.parse(String(lead.site_analysis || "{}")); } catch {}
+  let services: string[] = [];
+  try { services = JSON.parse(String(lead.services || "[]")); } catch {}
+  services = services.filter(Boolean).slice(0, 6);
+  const issues: string[] = Array.isArray(analysis.priorities) ? analysis.priorities.slice(0, 3) : [];
+  const strengths: string[] = Array.isArray(analysis.strengths) ? analysis.strengths.slice(0, 3) : [];
   const phone = String(lead.phone || lead.contact || "").replace(/[^0-9+]/g, "");
   const email = String(lead.email || "");
-  const cta = phone
-    ? "https://wa.me/" + phone.replace(/^\+/, "")
-    : email
-      ? "mailto:" + email
-      : "#contato";
-  const title = name + " — Nova experiência digital";
+  const cta = phone ? "https://wa.me/" + phone.replace(/^\+/, "") : email ? "mailto:" + email : "#contato";
+  const accentMap: Record<string, string> = {
+    "gastronomia": "#f2a93b",
+    "saúde": "#66d6c2",
+    "beleza e estética": "#d8a4ff",
+    "imobiliário": "#7db7ff",
+    "serviços jurídicos": "#d9c38c",
+    "contabilidade e finanças": "#8ee3a7",
+    "automotivo": "#ff6f61",
+    "construção e engenharia": "#e4c76a",
+    "tecnologia": "#78a9ff",
+    "varejo": "#f4c64f",
+  };
+  const accent = accentMap[type] || "#f4c64f";
+  const serviceCards = services.length
+    ? services.map((service, i) => "<article><span class='index'>0" + String(i + 1) + "</span><h3>" + escHtml(service) + "</h3><p>Oferta apresentada com clareza, benefício principal e caminho direto para o próximo passo.</p></article>").join("")
+    : "<article><span class='index'>01</span><h3>Oferta</h3><p>Estrutura para apresentar serviços, diferenciais e próximos passos com clareza.</p></article>" +
+      "<article><span class='index'>02</span><h3>Confiança</h3><p>Provas e informações essenciais organizadas para reduzir dúvidas antes do contato.</p></article>" +
+      "<article><span class='index'>03</span><h3>Contato</h3><p>Um CTA claro para transformar interesse em conversa.</p></article>";
+  const issueCards = (issues.length ? issues : ["Hierarquia comercial pode ser mais direta."]).map((issue, i) =>
+    "<div class='diag'><span>0" + String(i + 1) + "</span><p>" + escHtml(issue) + "</p></div>"
+  ).join("");
+  const strengthLine = strengths.length ? strengths.map(escHtml).join(" · ") : "Base atual identificada e pronta para evolução.";
+  const title = name + " — experiência digital";
 
   const html =
-    "<!doctype html><html lang='pt-BR'><head>" +
-    "<meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>" +
-    "<meta name='description' content='" + escAttr(opportunity) + "'>" +
-    "<title>" + escHtml(title) + "</title><link rel='stylesheet' href='style.css'></head>" +
-    "<body><header><div><span class='eyebrow'>DEMONSTRAÇÃO RITTY</span><strong>" +
-    escHtml(name) +
-    "</strong></div><a class='top-cta' href='" +
-    escAttr(cta) +
-    "'>Falar agora</a></header>" +
-    "<main><section class='hero'><div class='hero-copy'><span class='eyebrow'>NOVA PRESENÇA DIGITAL</span>" +
-    "<h1>Uma experiência digital à altura da sua marca.</h1>" +
-    "<p>" +
-    escHtml(opportunity) +
-    "</p><a class='cta' href='" +
-    escAttr(cta) +
-    "'>Conhecer a proposta</a></div><div class='orb'><div class='orb-core'></div></div></section>" +
-    "<section class='grid'><article><b>Clareza</b><p>Estrutura visual para o cliente entender a oferta em poucos segundos.</p></article>" +
-    "<article><b>Conversão</b><p>Chamadas para ação posicionadas para transformar visita em contato.</p></article>" +
-    "<article><b>Mobile</b><p>Experiência pensada primeiro para o celular, onde a maior parte dos acessos acontece.</p></article></section>" +
-    "<section id='contato' class='contact'><span class='eyebrow'>PRÓXIMO PASSO</span><h2>Vamos transformar interesse em contato.</h2>" +
-    "<p>" +
-    escHtml(
-      email || phone
-        ? "Canal público detectado na pesquisa e pronto para ser conectado."
-        : "O contato comercial pode ser conectado na versão final.",
-    ) +
-    "</p><a class='cta' href='" +
-    escAttr(cta) +
-    "'>Solicitar atendimento</a></section></main><script src='script.js'></script></body></html>";
+    "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>" +
+    "<meta name='description' content='" + escAttr(opportunity) + "'><title>" + escHtml(title) + "</title><link rel='stylesheet' href='style.css'></head>" +
+    "<body><header><div><span class='eyebrow'>DEMONSTRAÇÃO PERSONALIZADA</span><strong>" + escHtml(name) + "</strong><small>" + escHtml(type) + "</small></div>" +
+    "<a class='top-cta' href='" + escAttr(cta) + "'>Falar agora</a></header>" +
+    "<main><section class='hero'><div class='hero-copy'><span class='eyebrow'>UMA NOVA EXPERIÊNCIA PARA " + escHtml(name.toUpperCase().slice(0, 50)) + "</span>" +
+    "<h1>Mais clareza. Mais confiança. Um caminho melhor até o contato.</h1><p>" + escHtml(opportunity) + "</p>" +
+    "<div class='actions'><a class='cta' href='" + escAttr(cta) + "'>Quero falar com a equipe</a><a class='ghost' href='" + escAttr(String(lead.website || "#")) + "' target='_blank' rel='noreferrer'>Ver site atual</a></div>" +
+    "<div class='proof'><b>Base analisada:</b> " + escHtml(strengthLine) + "</div></div>" +
+    "<div class='visual'><div class='ring'></div><div class='core'></div><span>" + escHtml(String(analysis.score || "—")) + "<small>/100 análise</small></span></div></section>" +
+    "<section><div class='section-head'><span class='eyebrow'>O QUE PODE FICAR MAIS FORTE</span><h2>Diagnóstico comercial</h2></div><div class='diag-grid'>" + issueCards + "</div></section>" +
+    "<section><div class='section-head'><span class='eyebrow'>ESTRUTURA PROPOSTA</span><h2>Uma experiência pensada para o que " + escHtml(name) + " vende.</h2></div><div class='cards'>" + serviceCards + "</div></section>" +
+    "<section class='contact' id='contato'><span class='eyebrow'>PRÓXIMO PASSO</span><h2>O próximo clique pode ser o começo da conversa.</h2>" +
+    "<p>Esta é uma demonstração. A versão final pode receber identidade visual, fotos, textos, provas sociais e integrações reais da empresa.</p>" +
+    "<a class='cta' href='" + escAttr(cta) + "'>Solicitar proposta</a></section></main><script src='script.js'></script></body></html>";
 
   const css =
-    ":root{--bg:#050505;--panel:#101010;--text:#faf9f6;--muted:#9f9c94;--line:#242424;--accent:#f4c64f}" +
-    "*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(800px 500px at 85% 0%,#2a2307 0%,transparent 60%),var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,sans-serif}" +
-    "header{height:76px;padding:0 7vw;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);position:sticky;top:0;background:#060606e8;backdrop-filter:blur(16px);z-index:10}" +
-    "header strong{display:block;font-size:18px;letter-spacing:.02em}.eyebrow{display:block;color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.18em;margin-bottom:7px}" +
-    "header .eyebrow{font-size:8px;margin-bottom:4px}.top-cta,.cta{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border-radius:999px;background:var(--accent);color:#090909;padding:12px 17px;font-weight:850;box-shadow:0 10px 35px #0008}" +
-    "main{max-width:1160px;margin:0 auto;padding:0 7vw 90px}.hero{min-height:690px;display:grid;grid-template-columns:1.15fr .85fr;align-items:center;gap:5vw}.hero-copy{max-width:760px}.hero h1{font-size:clamp(52px,8vw,96px);line-height:.91;margin:12px 0 22px;letter-spacing:-.05em}.hero p{max-width:650px;color:var(--muted);font-size:19px;line-height:1.65;margin:0 0 30px}" +
-    ".orb{width:min(36vw,420px);aspect-ratio:1;border-radius:50%;background:radial-gradient(circle at 38% 32%,#ffe78d 0 3%,#8d7322 9%,#292408 30%,transparent 66%),radial-gradient(circle at 65% 62%,#f4c64f22,#f4c64f00 66%);filter:drop-shadow(0 35px 80px #f4c64f1a);position:relative;justify-self:end}.orb:before,.orb:after{content:'';position:absolute;inset:-8%;border:1px solid #f4c64f1a;border-radius:50%;transform:rotate(28deg)}.orb:after{inset:7%;transform:rotate(-22deg);border-color:#f4c64f2a}.orb-core{position:absolute;inset:26%;border-radius:50%;background:radial-gradient(circle,#f9e49c,#f4c64f 18%,#57470d 42%,transparent 70%);filter:blur(2px)}" +
-    ".grid{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.grid article,.contact{border:1px solid var(--line);background:linear-gradient(180deg,#121212,#0b0b0b);border-radius:24px;padding:28px}.grid article b{font-size:16px}.grid article p,.contact p{color:var(--muted);line-height:1.65}.contact{margin-top:15px;padding:38px}.contact h2{font-size:clamp(34px,5vw,56px);line-height:1;margin:0 0 12px;letter-spacing:-.04em}" +
-    "@media(max-width:800px){header{padding:0 18px}.hero{min-height:660px;grid-template-columns:1fr}.orb{width:min(74vw,360px);justify-self:center;order:-1}.hero-copy{margin-top:-30px}.hero h1{font-size:clamp(50px,16vw,78px)}.grid{grid-template-columns:1fr}main{padding-left:18px;padding-right:18px}}";
-
-  const js =
-    "document.addEventListener('DOMContentLoaded',function(){document.body.dataset.ready='true';});";
+    ":root{--bg:#060606;--panel:#101010;--text:#f7f5ee;--muted:#a7a39a;--line:#232323;--accent:" + accent + "}" +
+    "*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(900px 520px at 86% -4%,rgba(255,255,255,.08),transparent 58%),var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,sans-serif}" +
+    "header{height:78px;padding:0 6vw;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);position:sticky;top:0;background:#070707e8;backdrop-filter:blur(16px);z-index:10}header strong{display:block;font-size:18px;letter-spacing:.01em}header small{display:block;color:var(--muted);font-size:10px;margin-top:3px;text-transform:capitalize}.eyebrow{display:block;color:var(--accent);font-size:9px;font-weight:850;letter-spacing:.18em;margin-bottom:8px}.top-cta,.cta{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border-radius:999px;background:var(--accent);color:#080808;padding:12px 17px;font-weight:850;box-shadow:0 16px 40px rgba(0,0,0,.24)}.ghost{display:inline-flex;align-items:center;text-decoration:none;border:1px solid #343434;border-radius:999px;color:var(--text);padding:12px 17px;font-weight:750}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}.hero{min-height:760px;display:grid;grid-template-columns:1.15fr .85fr;align-items:center;gap:5vw}.hero-copy{max-width:780px}.hero h1{font-size:clamp(52px,8vw,100px);line-height:.91;letter-spacing:-.055em;margin:10px 0 24px}.hero p{max-width:680px;color:var(--muted);font-size:19px;line-height:1.65;margin:0 0 8px}.proof{margin-top:24px;color:#c8c4bb;font-size:11px;line-height:1.6;max-width:650px}.visual{width:min(34vw,400px);aspect-ratio:1;border-radius:40%;position:relative;justify-self:end;background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.11),transparent 62%);border:1px solid rgba(255,255,255,.16);transform:rotate(16deg);box-shadow:0 50px 120px rgba(0,0,0,.28)}.visual .ring{position:absolute;inset:10%;border:1px solid var(--accent);opacity:.55;border-radius:42%;animation:spin 16s linear infinite}.visual .core{position:absolute;inset:28%;border-radius:50%;background:radial-gradient(circle at 38% 36%,#fff 0 2%,var(--accent) 15%,transparent 68%);filter:blur(1px)}.visual span{position:absolute;inset:auto 0 14%;text-align:center;font-weight:900;font-size:34px;transform:rotate(-16deg)}.visual span small{display:block;font-size:9px;letter-spacing:.16em;color:var(--muted);text-transform:uppercase}.section-head{max-width:780px;margin:0 0 24px}.section-head h2{font-size:clamp(34px,6vw,66px);line-height:.98;letter-spacing:-.045em;margin:8px 0 0}.diag-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.diag{padding:24px;border:1px solid var(--line);border-radius:22px;background:#0d0d0d}.diag span{font-size:10px;color:var(--accent);font-weight:900}.diag p{margin:12px 0 0;color:#ddd9d0;line-height:1.55}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.cards article,.contact{border:1px solid var(--line);border-radius:22px;background:linear-gradient(180deg,#121212,#0b0b0b);padding:26px}.index{font-size:9px;color:var(--accent);letter-spacing:.18em;font-weight:900}.cards h3{font-size:24px;margin:16px 0 8px}.cards p,.contact p{color:var(--muted);line-height:1.65}.contact{margin:24px 0 90px;padding:40px}.contact h2{max-width:850px;font-size:clamp(38px,6vw,70px);line-height:.98;letter-spacing:-.05em;margin:0 0 14px}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:800px){header{padding:0 18px}.hero{min-height:720px;grid-template-columns:1fr;gap:20px}.visual{width:min(78vw,340px);justify-self:center;order:-1}.hero h1{font-size:clamp(52px,15vw,82px)}.diag-grid,.cards{grid-template-columns:1fr}main{padding:0 18px 70px}.top-cta{padding:10px 13px}.proof{font-size:10px}}";
 
   return {
     files: [
       { path: "index.html", content: html },
       { path: "style.css", content: css },
-      { path: "script.js", content: js },
+      { path: "script.js", content: "document.addEventListener('DOMContentLoaded',function(){document.body.dataset.ready='true';});" },
     ],
     title,
   };
@@ -484,169 +635,88 @@ export async function prepareOutreach(
   ensureRevenueCommerceSchema(db);
   let lead = await enrichLeadInternal(db, args.leadId);
 
-  let offer = db.raw
-    .prepare("SELECT * FROM revenue_offers WHERE lead_id=? ORDER BY created_at DESC LIMIT 1")
-    .get(lead.id) as any;
-
+  let offer = db.raw.prepare("SELECT * FROM revenue_offers WHERE lead_id=? ORDER BY created_at DESC LIMIT 1").get(lead.id) as any;
   if (!offer) {
     const offerId = ulid();
-    const proposalPath = path.join(
-      REVENUE_ROOT,
-      "offers",
-      "manual-" + String(lead.id) + "-" + offerId + ".md",
+    const proposalPath = path.join(REVENUE_ROOT, "offers", "manual-" + String(lead.id) + "-" + offerId + ".md");
+    fs.writeFileSync(proposalPath, [
+      "# RITTY — Proposta de melhoria digital",
+      "",
+      "Prospect: " + lead.name,
+      "Site analisado: " + lead.website,
+      "Diagnóstico: " + (lead.opportunity || "Melhorar a jornada comercial."),
+      "",
+      "Esta proposta usa evidências públicas e uma demonstração personalizada como ponto de partida.",
+    ].join("\n"), "utf8");
+    db.raw.prepare("INSERT INTO revenue_offers (id,lead_id,title,price_cents,status,proposal_path,evidence,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)").run(
+      offerId, lead.id, "Site profissional / " + lead.name, DEFAULT_PRICE_CENTS, "draft", proposalPath,
+      JSON.stringify({ website: lead.website, opportunity: lead.opportunity, analysis: lead.site_analysis ? JSON.parse(lead.site_analysis) : null }),
+      now(), now(),
     );
-    fs.writeFileSync(
-      proposalPath,
-      [
-        "# RITTY — Proposta de melhoria digital",
-        "",
-        "Prospect: " + lead.name,
-        "Site analisado: " + lead.website,
-        "Oportunidade: " + (lead.opportunity || "Melhorar a presença digital e conversão."),
-        "",
-        "Preço sugerido: R$ " +
-          (DEFAULT_PRICE_CENTS / 100).toLocaleString("pt-BR", {
-            minimumFractionDigits: 2,
-          }),
-        "",
-        "Este documento foi gerado automaticamente com base em informações públicas.",
-      ].join("\n"),
-      "utf8",
-    );
-    db.raw
-      .prepare(
-        "INSERT INTO revenue_offers (id,lead_id,title,price_cents,status,proposal_path,evidence,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-      )
-      .run(
-        offerId,
-        lead.id,
-        "Site profissional / " + lead.name,
-        DEFAULT_PRICE_CENTS,
-        "draft",
-        proposalPath,
-        JSON.stringify({
-          website: lead.website,
-          opportunity: lead.opportunity,
-          evidenceUrl: lead.evidence_url,
-        }),
-        now(),
-        now(),
-      );
-    offer = db.raw
-      .prepare("SELECT * FROM revenue_offers WHERE id=?")
-      .get(offerId) as any;
+    offer = db.raw.prepare("SELECT * FROM revenue_offers WHERE id=?").get(offerId) as any;
   }
 
-  const previewUrl =
-    String(args.previewUrl || "").trim() || (await createDemoForLead(db, lead, offer));
-  offer = db.raw
-    .prepare("SELECT * FROM revenue_offers WHERE id=?")
-    .get(offer.id) as any;
+  const previewUrl = String(args.previewUrl || "").trim() || (await createDemoForLead(db, lead, offer));
+  offer = db.raw.prepare("SELECT * FROM revenue_offers WHERE id=?").get(offer.id) as any;
 
+  let analysis: any = {};
+  try { analysis = JSON.parse(String(lead.site_analysis || "{}")); } catch {}
+  let services: string[] = [];
+  try { services = JSON.parse(String(lead.services || "[]")); } catch {}
+  const issues = Array.isArray(analysis.priorities) ? analysis.priorities.slice(0, 2) : [];
+  const strengths = Array.isArray(analysis.strengths) ? analysis.strengths.slice(0, 2) : [];
   const destination = String(lead.email || lead.contact || lead.contact_url || "").trim();
   const channel = args.channel || (lead.email ? "email" : "manual");
-  const subject = "Uma ideia rápida para " + lead.name;
+  const subject = "Uma melhoria concreta para " + lead.name;
+  const detailLines = issues.length ? issues.map((x) => "• " + x).join("\n") : "• Deixar a proposta de valor e o próximo passo comercial mais claros.";
+  const strengthLine = strengths.length ? strengths.join(" · ") : "há uma base real para evoluir";
+  const serviceLine = services.length ? "Serviços detectados: " + services.slice(0, 3).join(", ") + "." : "";
+
   const body = [
-    "Olá, " + lead.name + ".",
+    "Olá, time da " + lead.name + ",",
     "",
-    "Encontrei a " +
-      lead.name +
-      " ao pesquisar negócios de " +
-      (lead.location || "sua região") +
-      " e analisei o site público atual.",
+    "Analisei o site atual de vocês e encontrei duas oportunidades claras de melhorar a jornada comercial:",
+    detailLines,
     "",
-    "A principal oportunidade que encontrei foi: " +
-      (lead.opportunity || "melhorar a apresentação comercial e a conversão do site."),
+    "Também notei que " + strengthLine.toLowerCase() + ".",
+    serviceLine,
     "",
-    "Em vez de só apontar o problema, preparei uma demonstração:",
+    "Para não ficar só no diagnóstico, preparei uma demonstração personalizada:",
     previewUrl,
     "",
-    "Se fizer sentido, posso adaptar essa experiência para a sua marca, produtos/serviços e canais de atendimento.",
+    "A ideia é transformar a estrutura atual em uma experiência mais clara no celular, com oferta, prova e CTA organizados para facilitar o próximo passo.",
     "",
-    "Abraço,",
+    "Se fizer sentido, eu adapto a demonstração para a identidade e os serviços reais da empresa e envio o escopo fechado.",
+    "",
     "RITTY — Revenue Engine",
     args.customContext ? String(args.customContext).slice(0, 1200) : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].filter(Boolean).join("\n");
 
-  const existing = db.raw
-    .prepare(
-      "SELECT id,body,destination,subject,status FROM revenue_messages WHERE lead_id=? AND status IN ('draft','approved') ORDER BY created_at DESC LIMIT 1",
-    )
-    .get(lead.id) as any;
-
+  const existing = db.raw.prepare("SELECT id,body,destination,subject,status FROM revenue_messages WHERE lead_id=? AND status IN ('draft','approved','sent') ORDER BY created_at DESC LIMIT 1").get(lead.id) as any;
   if (existing) {
-    return JSON.stringify(
-      {
-        leadId: lead.id,
-        messageId: existing.id,
-        destination: existing.destination,
-        subject: existing.subject,
-        body: existing.body,
-        previewUrl,
-        approvalRequired: existing.status !== "approved",
-        status: existing.status,
-        sent: existing.status === "sent",
-      },
-      null,
-      2,
-    );
+    return JSON.stringify({
+      leadId: lead.id, messageId: existing.id, destination: existing.destination, subject: existing.subject,
+      body: existing.body, previewUrl, approvalRequired: existing.status !== "approved" && existing.status !== "sent", status: existing.status, sent: existing.status === "sent",
+    }, null, 2);
   }
 
   const messageId = ulid();
-  db.raw
-    .prepare(
-      "INSERT INTO revenue_messages (id,lead_id,channel,destination,subject,body,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-    )
-    .run(
-      messageId,
-      lead.id,
-      channel,
-      destination || null,
-      subject,
-      body,
-      "draft",
-      now(),
-      now(),
-    );
+  db.raw.prepare("INSERT INTO revenue_messages (id,lead_id,channel,destination,subject,body,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)").run(
+    messageId, lead.id, channel, destination || null, subject, body, "draft", now(), now(),
+  );
 
   const actionId = ulid();
-  db.raw
-    .prepare(
-      "INSERT INTO revenue_actions (id,lead_id,action,status,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
-    )
-    .run(
-      actionId,
-      lead.id,
-      "send_outreach",
-      "pending_approval",
-      JSON.stringify({ messageId, previewUrl, offerId: offer.id }),
-      now(),
-      now(),
-    );
-
-  db.raw
-    .prepare("UPDATE revenue_leads SET status='proposal',updated_at=? WHERE id=?")
-    .run(now(), lead.id);
-
-  return JSON.stringify(
-    {
-      actionId,
-      messageId,
-      leadId: lead.id,
-      channel,
-      destination,
-      subject,
-      body,
-      previewUrl,
-      offerId: offer.id,
-      approvalRequired: true,
-      sent: false,
-    },
-    null,
-    2,
+  db.raw.prepare("INSERT INTO revenue_actions (id,lead_id,action,status,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run(
+    actionId, lead.id, "send_outreach", "pending_approval",
+    JSON.stringify({ messageId, previewUrl, offerId: offer.id, diagnosis: issues }),
+    now(), now(),
   );
+  db.raw.prepare("UPDATE revenue_leads SET status='proposal',updated_at=? WHERE id=?").run(now(), lead.id);
+
+  return JSON.stringify({
+    actionId, messageId, leadId: lead.id, channel, destination, subject, body, previewUrl, offerId: offer.id,
+    approvalRequired: true, sent: false,
+  }, null, 2);
 }
 
 export function approveOutreach(db: AutomatonDatabase, actionId: string): string {
@@ -762,49 +832,43 @@ export async function sendApprovedOutreach(
 
 export function recordLeadResponse(
   db: AutomatonDatabase,
-  args: {
-    leadId: string;
-    stage: "replied" | "interested" | "lost";
-    response: string;
-  },
+  args: { leadId: string; stage: "replied" | "interested" | "lost"; response: string },
 ): string {
   ensureRevenueCommerceSchema(db);
   const lead = getLead(db, args.leadId);
   if (!lead) return "Lead not found: " + args.leadId;
 
   const responseText = String(args.response || "").trim().slice(0, 6000);
-  db.raw
-    .prepare("UPDATE revenue_leads SET status=?,notes=COALESCE(notes,'') || ?,updated_at=? WHERE id=?")
-    .run(
-      args.stage,
-      "\nResposta (" + now() + "): " + responseText,
-      now(),
-      lead.id,
-    );
+  db.raw.prepare("UPDATE revenue_leads SET status=?,notes=COALESCE(notes,'') || ?,updated_at=? WHERE id=?").run(
+    args.stage, "\nResposta (" + now() + "): " + responseText, now(), lead.id,
+  );
+  db.raw.prepare("INSERT INTO revenue_events (id,lead_id,type,amount_cents,currency,confirmed,notes,created_at) VALUES (?,?,?,?,?,?,?,?)").run(
+    ulid(), lead.id, "response_received", 0, "BRL", 0, args.stage + ": " + responseText.slice(0, 500), now(),
+  );
+
+  if (args.stage === "replied") {
+    const existing = db.raw.prepare("SELECT id FROM revenue_actions WHERE lead_id=? AND action='follow_up' AND status IN ('pending_approval','approved') ORDER BY created_at DESC LIMIT 1").get(lead.id) as any;
+    if (!existing) {
+      db.raw.prepare("INSERT INTO revenue_actions (id,lead_id,action,status,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run(
+        ulid(), lead.id, "follow_up", "pending_approval",
+        JSON.stringify({ reason: "Resposta recebida; revisar intenção do prospect e preparar próximo passo.", response: responseText }),
+        now(), now(),
+      );
+    }
+  }
 
   if (args.stage === "interested") {
-    const existing = db.raw
-      .prepare(
-        "SELECT id,status FROM revenue_actions WHERE lead_id=? AND action='create_checkout' AND status IN ('pending_approval','approved') ORDER BY created_at DESC LIMIT 1",
-      )
-      .get(lead.id) as any;
+    db.raw.prepare("INSERT INTO revenue_events (id,lead_id,type,amount_cents,currency,confirmed,notes,created_at) VALUES (?,?,?,?,?,?,?,?)").run(
+      ulid(), lead.id, "interest_confirmed", 0, "BRL", 0, "Interesse confirmado.", now(),
+    );
 
+    const existing = db.raw.prepare("SELECT id,status FROM revenue_actions WHERE lead_id=? AND action='create_checkout' AND status IN ('pending_approval','approved') ORDER BY created_at DESC LIMIT 1").get(lead.id) as any;
     if (!existing) {
-      db.raw
-        .prepare(
-          "INSERT INTO revenue_actions (id,lead_id,action,status,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
-        )
-        .run(
-          ulid(),
-          lead.id,
-          "create_checkout",
-          "pending_approval",
-          JSON.stringify({
-            reason: "Lead demonstrou interesse; checkout pode ser criado após aprovação.",
-          }),
-          now(),
-          now(),
-        );
+      db.raw.prepare("INSERT INTO revenue_actions (id,lead_id,action,status,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run(
+        ulid(), lead.id, "create_checkout", "pending_approval",
+        JSON.stringify({ reason: "Interesse confirmado; checkout pronto para aprovação humana.", nextStep: "approve_checkout" }),
+        now(), now(),
+      );
     }
   }
 
@@ -1243,125 +1307,98 @@ export async function fulfillPaidOrder(
   const lead = getLead(db, leadId);
   if (!lead) throw new Error("Lead not found: " + leadId);
 
-  const existing = db.raw
-    .prepare(
-      "SELECT id,status FROM revenue_fulfillments WHERE lead_id=? AND status IN ('running','delivered') ORDER BY created_at DESC LIMIT 1",
-    )
-    .get(lead.id) as any;
+  const existing = db.raw.prepare(
+    "SELECT id,status,published_url FROM revenue_fulfillments WHERE lead_id=? AND status IN ('running','delivered') ORDER BY created_at DESC LIMIT 1",
+  ).get(lead.id) as any;
   if (existing) {
     return JSON.stringify({
       fulfillmentId: existing.id,
       status: existing.status,
+      publishedUrl: existing.published_url || null,
       alreadyProcessed: true,
     });
   }
 
   const fulfillmentId = ulid();
-  db.raw
-    .prepare(
-      "INSERT INTO revenue_fulfillments (id,lead_id,offer_id,status,delivery_email,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
-    )
-    .run(
-      fulfillmentId,
-      lead.id,
-      offerId || null,
-      "running",
-      lead.email || null,
-      now(),
-      now(),
-    );
-  db.raw
-    .prepare("UPDATE revenue_leads SET status='fulfillment',updated_at=? WHERE id=?")
-    .run(now(), lead.id);
+  db.raw.prepare(
+    "INSERT INTO revenue_fulfillments (id,lead_id,offer_id,status,delivery_email,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+  ).run(fulfillmentId, lead.id, offerId || null, "running", lead.email || null, now(), now());
+  db.raw.prepare("UPDATE revenue_leads SET status='fulfillment',updated_at=? WHERE id=?").run(now(), lead.id);
 
   try {
     const site = buildFinalSite(lead);
     const work = createWork(db, {
       title: "Entrega paga — " + lead.name,
-      description: "Gerar e validar a versão final do site para " + lead.name + " após pagamento confirmado.",
+      description: "Gerar, validar e publicar a versão final do site para " + lead.name + " após pagamento confirmado.",
       type: "revenue-fulfillment",
       customer: lead.name,
       successCriteria: "index.html, style.css e script.js existem e passam a validação.",
     });
-
     const result = await executeWorkBundle(db, work.id, {
       files: site.files,
       testCommand: "test -s index.html && test -s style.css && test -s script.js",
       artifacts: ["index.html", "style.css", "script.js"],
       summary: "Versão final gerada e validada para " + lead.name + ".",
     });
-
     if (!result.completed) throw new Error(result.summary);
 
-    const previewUrl = publicBaseUrl() + "/preview/" + work.id + "/";
-    let publishedUrl: string | null = null;
-
-    try {
-      publishedUrl = await publishVercel(site.files, safeProjectName(lead.name));
-    } catch (error) {
-      db.raw
-        .prepare("UPDATE revenue_fulfillments SET error=?,updated_at=? WHERE id=?")
-        .run(
-          "Vercel publish failed: " +
-            (error instanceof Error ? error.message : String(error)),
-          now(),
-          fulfillmentId,
-        );
+    const stableDir = path.join(REVENUE_ROOT, "fulfillments", fulfillmentId);
+    fs.mkdirSync(stableDir, { recursive: true });
+    for (const file of site.files) {
+      const target = path.join(stableDir, file.path);
+      if (!target.startsWith(stableDir + path.sep)) throw new Error("Unsafe fulfillment path.");
+      fs.writeFileSync(target, file.content, "utf8");
     }
 
-    const deliveryUrl = publishedUrl || previewUrl;
-    const delivered = Boolean(publishedUrl);
-    db.raw
-      .prepare(
-        "UPDATE revenue_fulfillments SET status=?,work_id=?,preview_url=?,published_url=?,updated_at=? WHERE id=?",
-      )
-      .run(delivered ? "delivered" : "ready_for_publish", work.id, previewUrl, publishedUrl, now(), fulfillmentId);
+    const previewUrl = publicBaseUrl() + "/preview/" + work.id + "/";
+    const rittyHostedUrl = publicBaseUrl() + "/sites/" + fulfillmentId + "/";
+    let publishedUrl: string | null = rittyHostedUrl;
+    let hosting = "ritty";
 
-    db.raw
-      .prepare("UPDATE revenue_leads SET status=?,updated_at=? WHERE id=?")
-      .run(delivered ? "won" : "paid", now(), lead.id);
+    try {
+      const vercelUrl = await publishVercel(site.files, safeProjectName(lead.name));
+      if (vercelUrl) {
+        publishedUrl = vercelUrl;
+        hosting = "vercel";
+      }
+    } catch (error) {
+      db.raw.prepare("UPDATE revenue_fulfillments SET error=COALESCE(error,'') || ?,updated_at=? WHERE id=?").run(
+        " Vercel publish failed: " + (error instanceof Error ? error.message : String(error)), now(), fulfillmentId,
+      );
+    }
 
+    db.raw.prepare(
+      "UPDATE revenue_fulfillments SET status='delivered',work_id=?,preview_url=?,published_url=?,updated_at=? WHERE id=?",
+    ).run(work.id, previewUrl, publishedUrl, now(), fulfillmentId);
+
+    db.raw.prepare("UPDATE revenue_leads SET status='won',updated_at=? WHERE id=?").run(now(), lead.id);
     if (offerId) {
-      db.raw
-        .prepare("UPDATE revenue_offers SET status=?,preview_url=?,updated_at=? WHERE id=?")
-        .run(delivered ? "won" : "ready_for_publish", previewUrl, now(), offerId);
+      db.raw.prepare("UPDATE revenue_offers SET status='won',preview_url=?,updated_at=? WHERE id=?").run(publishedUrl, now(), offerId);
     }
 
     await sendDeliveryEmail(
       String(lead.email || ""),
-      deliveryUrl,
+      String(publishedUrl || rittyHostedUrl),
       String(lead.name || "cliente"),
     ).catch((error) => {
-      db.raw
-        .prepare("UPDATE revenue_fulfillments SET error=COALESCE(error,'') || ?,updated_at=? WHERE id=?")
-        .run(
-          " Delivery email failed: " +
-            (error instanceof Error ? error.message : String(error)),
-          now(),
-          fulfillmentId,
-        );
+      db.raw.prepare("UPDATE revenue_fulfillments SET error=COALESCE(error,'') || ?,updated_at=? WHERE id=?").run(
+        " Delivery email failed: " + (error instanceof Error ? error.message : String(error)), now(), fulfillmentId,
+      );
     });
 
-    return JSON.stringify(
-      {
-        fulfillmentId,
-        workId: work.id,
-        previewUrl,
-        publishedUrl: deliveryUrl,
-        status: "delivered",
-        title: site.title,
-      },
-      null,
-      2,
-    );
+    return JSON.stringify({
+      fulfillmentId,
+      workId: work.id,
+      previewUrl,
+      publishedUrl,
+      hosting,
+      status: "delivered",
+      title: site.title,
+    }, null, 2);
   } catch (error) {
-    db.raw
-      .prepare("UPDATE revenue_fulfillments SET status='failed',error=?,updated_at=? WHERE id=?")
-      .run(
-        error instanceof Error ? error.message : String(error),
-        now(),
-        fulfillmentId,
-      );
+    db.raw.prepare("UPDATE revenue_fulfillments SET status='failed',error=?,updated_at=? WHERE id=?").run(
+      error instanceof Error ? error.message : String(error), now(), fulfillmentId,
+    );
     throw error;
   }
 }

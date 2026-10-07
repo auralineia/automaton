@@ -1,4 +1,6 @@
 import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
 import type { AutomatonDatabase } from "../types.js";
 import { URL } from "node:url";
 import {
@@ -52,6 +54,7 @@ export async function handleRevenueRequest(
 ): Promise<boolean> {
   const pathname = url.pathname;
   const handled =
+    pathname.startsWith("/sites/") ||
     pathname === "/revenue" ||
     pathname === "/api/revenue" ||
     pathname.startsWith("/api/revenue/") ||
@@ -60,6 +63,38 @@ export async function handleRevenueRequest(
     pathname === "/revenue/cancelled";
 
   if (!handled) return false;
+
+  if (pathname.startsWith("/sites/") && req.method === "GET") {
+    const match = pathname.match(/^\/sites\/([A-Za-z0-9_-]+)\/?(.*)$/);
+    const fulfillmentId = match?.[1] || "";
+    const requested = match?.[2] || "index.html";
+    const allowed = new Set(["index.html", "style.css", "script.js"]);
+    const fileName = allowed.has(requested) ? requested : "";
+    if (!fulfillmentId || !fileName) {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+      res.end("Not found");
+      return true;
+    }
+    const root = path.join(process.env.RITTY_REVENUE_ROOT || "/root/.automaton/revenue", "fulfillments");
+    const target = path.join(root, fulfillmentId, fileName);
+    if (!target.startsWith(root + path.sep)) {
+      res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Invalid path");
+      return true;
+    }
+    try {
+      const body = fs.readFileSync(target);
+      const type = fileName.endsWith(".css") ? "text/css; charset=utf-8" :
+        fileName.endsWith(".js") ? "text/javascript; charset=utf-8" :
+        "text/html; charset=utf-8";
+      res.writeHead(200, { "Content-Type": type, "Cache-Control": "no-store" });
+      res.end(body);
+    } catch {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+      res.end("Site not found");
+    }
+    return true;
+  }
 
   ensureRevenueCommerceSchema(db);
 
