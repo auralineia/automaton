@@ -668,7 +668,7 @@ export async function prepareOutreach(
   const destination = String(lead.email || lead.contact || lead.contact_url || "").trim();
   const channel = args.channel || (lead.email ? "email" : "manual");
   const subject = "Uma melhoria concreta para " + lead.name;
-  const detailLines = issues.length ? issues.map((x) => "• " + x).join("\n") : "• Deixar a proposta de valor e o próximo passo comercial mais claros.";
+  const detailLines = issues.length ? issues.map((x: string) => "• " + x).join("\n") : "• Deixar a proposta de valor e o próximo passo comercial mais claros.";
   const strengthLine = strengths.length ? strengths.join(" · ") : "há uma base real para evoluir";
   const serviceLine = services.length ? "Serviços detectados: " + services.slice(0, 3).join(", ") + "." : "";
 
