@@ -214,7 +214,6 @@ async function searchBing(query: string, limit = 8): Promise<Array<{ title: stri
       try {
         const host = new URL(url).hostname.toLowerCase();
         if (!host.includes(".") || host.length < 5) continue;
-        if (isLikelyNonCommercialProspect(result.title, result.snippet, result.url)) continue;
       if (/(instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org)/i.test(host)) continue;
       } catch { continue; }
       const caption = item.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
@@ -387,6 +386,7 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
       const discovered = new URL(result.url);
       const host = discovered.hostname.toLowerCase();
       if (!host.includes(".") || host.length < 5) continue;
+      if (isLikelyNonCommercialProspect(result.title, result.snippet, result.url)) continue;
       if (/(instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org)/i.test(host)) continue;
       if (isLikelyEditorialResult(result.title, result.snippet)) continue;
       const id = ensureLead(db, { name: result.title || host, website: result.url, source: "public-search", query, location, snippet: result.snippet });
