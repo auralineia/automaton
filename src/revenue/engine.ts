@@ -260,6 +260,11 @@ async function searchBingRss(query: string, limit = 8): Promise<Array<{ title: s
   } finally { clearTimeout(timer); }
 }
 
+function isLikelyEditorialResult(title: string, snippet: string): boolean {
+  const lower = (title + " " + snippet).toLowerCase();
+  return /\b(ranking|rankings|lista das|lista de|maiores|melhores|top \d+|guia de|comparativo|como escolher|o que é|notícias|noticia|blog)\b/i.test(lower);
+}
+
 function heuristicScore(text: string, url: string): { score: number; reasons: string[] } {
   const lower = (text + " " + url).toLowerCase();
   let score = 30;
@@ -293,7 +298,7 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
   const location = options.location || process.env.RITTY_REVENUE_REGION || "Brasil";
   const limit = Math.max(3, Math.min(8, options.limit || 5));
   const priceCents = Number.isFinite(options.priceCents) && (options.priceCents || 0) > 0 ? Number(options.priceCents) : DEFAULT_PRICE_CENTS;
-  const query = `${niche} ${location}`;
+  const query = `site:.com.br ${niche} ${location} -ranking -lista -melhores -maiores -top -wikipedia`;
   let searchResults: Array<{ title: string; url: string; snippet: string }> = [];
   try {
     searchResults = await searchDuckDuckGo(query, limit);
@@ -307,9 +312,11 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
   const candidateIds: string[] = [];
   for (const result of searchResults) {
     try {
-      const host = new URL(result.url).hostname.toLowerCase();
+      const discovered = new URL(result.url);
+      const host = discovered.hostname.toLowerCase();
       if (!host.endsWith(".com.br")) continue;
       if (/(instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org)/i.test(host)) continue;
+      if (isLikelyEditorialResult(result.title, result.snippet)) continue;
       const id = ensureLead(db, { name: result.title || host, website: result.url, source: "public-search", query, location, snippet: result.snippet });
       candidateIds.push(id);
     } catch {}
@@ -321,22 +328,27 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
     const row = db.raw.prepare("SELECT id,name,website,snippet FROM revenue_leads WHERE id=?").get(id) as { id: string; name: string; website: string | null; snippet: string | null } | undefined;
     if (!row?.website) continue;
     try {
-      const page = await fetchPublicText(row.website);
+      const discovered = new URL(row.website);
+      const homepage = new URL("/", discovered.origin).toString();
+      const page = await fetchPublicText(homepage);
       try {
         const host = new URL(page.url).hostname.toLowerCase();
-        if (!host.endsWith(".com.br") || /wikipedia\.org|bing\.com|google\.com|duckduckgo\.com/i.test(host)) {
+        const discoveredHost = discovered.hostname.toLowerCase().replace(/^www\./, "");
+        const finalHost = host.replace(/^www\./, "");
+        if (!host.endsWith(".com.br") || finalHost !== discoveredHost || /wikipedia\.org|bing\.com|google\.com|duckduckgo\.com/i.test(host)) {
           db.raw.prepare("UPDATE revenue_leads SET status=?,updated_at=? WHERE id=?").run("rejected", now(), id);
           continue;
         }
       } catch { continue; }
-      if (page.text.trim().length < 120) {
+      if (page.status >= 400 || page.text.trim().length < 120 || isLikelyEditorialResult(page.title, page.text.slice(0, 3000))) {
         db.raw.prepare("UPDATE revenue_leads SET status=?,updated_at=? WHERE id=?").run("rejected", now(), id);
         continue;
       }
       const scored = heuristicScore(page.text + " " + (row.snippet || "") + " " + page.title, page.url);
-      db.raw.prepare("UPDATE revenue_leads SET website=?,score=?,notes=?,status=?,updated_at=? WHERE id=?").run(page.url, scored.score, JSON.stringify({ title: page.title, reasons: scored.reasons, status: page.status }), "qualified", now(), id);
+      const businessName = page.title || row.name;
+      db.raw.prepare("UPDATE revenue_leads SET name=?,website=?,score=?,notes=?,status=?,updated_at=? WHERE id=?").run(businessName, page.url, scored.score, JSON.stringify({ title: page.title, reasons: scored.reasons, status: page.status, validatedHomepage: true }), "qualified", now(), id);
       researched++;
-      candidates.push({ id, score: scored.score, name: row.name, website: page.url, reasons: scored.reasons });
+      candidates.push({ id, score: scored.score, name: businessName, website: page.url, reasons: scored.reasons });
     } catch (error) {
       db.raw.prepare("UPDATE revenue_leads SET notes=?,status=?,updated_at=? WHERE id=?").run(JSON.stringify({ researchError: error instanceof Error ? error.message : String(error) }), "research_failed", now(), id);
     }
