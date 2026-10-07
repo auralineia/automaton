@@ -213,7 +213,7 @@ async function searchBing(query: string, limit = 8): Promise<Array<{ title: stri
       if (!/^https?:\/\//i.test(url)) continue;
       try {
         const host = new URL(url).hostname.toLowerCase();
-        if (!host.endsWith(".com.br")) continue;
+        if (!host.includes(".") || host.length < 5) continue;
         if (/(instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org)/i.test(host)) continue;
       } catch { continue; }
       const caption = item.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
@@ -251,7 +251,7 @@ async function searchBingRss(query: string, limit = 8): Promise<Array<{ title: s
       if (!/^https?:\/\//i.test(url)) continue;
       try {
         const host = new URL(url).hostname.toLowerCase();
-        if (!host.endsWith(".com.br")) continue;
+        if (!host.includes(".") || host.length < 5) continue;
         if (/(instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org)/i.test(host)) continue;
       } catch { continue; }
       results.push({ title: decodeHtml(title).slice(0,220), url, snippet: decodeHtml(description).slice(0,700) });
@@ -298,12 +298,52 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
   const location = options.location || process.env.RITTY_REVENUE_REGION || "Brasil";
   const limit = Math.max(3, Math.min(8, options.limit || 5));
   const priceCents = Number.isFinite(options.priceCents) && (options.priceCents || 0) > 0 ? Number(options.priceCents) : DEFAULT_PRICE_CENTS;
-  const query = `site:.com.br ${niche} ${location} -ranking -lista -melhores -maiores -top -wikipedia`;
+  const normalizedLocation = location.toLowerCase();
+  const brazilTarget = /(^|\\b)(brasil|brazil|br|são paulo|sao paulo|rio de janeiro|brasília|brasilia)(\\b|$)/i.test(location);
+  const globalTarget = /(^|\\b)(global|world|worldwide|mundo|international|internacional)(\\b|$)/i.test(normalizedLocation);
+  const domainHint = brazilTarget && !globalTarget ? "site:.com.br " : "";
+  const locationPhrase = globalTarget ? "" : " " + location;
+  const baseQuery = domainHint + niche + locationPhrase + " -ranking -lista -melhores -maiores -top -wikipedia";
+  const query = baseQuery.trim();
   let searchResults: Array<{ title: string; url: string; snippet: string }> = [];
   try {
-    searchResults = await searchDuckDuckGo(query, limit);
-    if (searchResults.length === 0) searchResults = await searchBing(query, limit);
-    if (searchResults.length === 0) searchResults = await searchBingRss(query, limit);
+    const queries = [
+      query,
+      (domainHint + niche + locationPhrase + " contato").trim(),
+      (domainHint + niche + locationPhrase + " orçamento").trim(),
+    ].filter((value, index, all) => value && all.indexOf(value) === index);
+
+    for (const q of queries) {
+      const found = await searchDuckDuckGo(q, Math.min(limit, 6));
+      searchResults.push(...found);
+      if (searchResults.length >= limit) break;
+    }
+    if (searchResults.length < limit) {
+      for (const q of queries) {
+        const found = await searchBing(q, Math.min(limit, 8));
+        searchResults.push(...found);
+        if (searchResults.length >= limit) break;
+      }
+    }
+    if (searchResults.length < limit) {
+      for (const q of queries) {
+        const found = await searchBingRss(q, Math.min(limit, 8));
+        searchResults.push(...found);
+        if (searchResults.length >= limit) break;
+      }
+    }
+
+    const seen = new Set<string>();
+    searchResults = searchResults.filter((item) => {
+      try {
+        const canonical = new URL(item.url).origin.toLowerCase();
+        if (seen.has(canonical)) return false;
+        seen.add(canonical);
+        return true;
+      } catch {
+        return false;
+      }
+    }).slice(0, limit);
   } catch (error) {
     return "Revenue engine could not search public web: " + (error instanceof Error ? error.message : String(error));
   }
@@ -314,7 +354,7 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
     try {
       const discovered = new URL(result.url);
       const host = discovered.hostname.toLowerCase();
-      if (!host.endsWith(".com.br")) continue;
+      if (!host.includes(".") || host.length < 5) continue;
       if (/(instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org)/i.test(host)) continue;
       if (isLikelyEditorialResult(result.title, result.snippet)) continue;
       const id = ensureLead(db, { name: result.title || host, website: result.url, source: "public-search", query, location, snippet: result.snippet });
@@ -335,7 +375,7 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
         const host = new URL(page.url).hostname.toLowerCase();
         const discoveredHost = discovered.hostname.toLowerCase().replace(/^www\./, "");
         const finalHost = host.replace(/^www\./, "");
-        if (!host.endsWith(".com.br") || finalHost !== discoveredHost || /wikipedia\.org|bing\.com|google\.com|duckduckgo\.com/i.test(host)) {
+        if (!host.includes(".") || finalHost !== discoveredHost || /wikipedia\.org|bing\.com|google\.com|duckduckgo\.com/i.test(host)) {
           db.raw.prepare("UPDATE revenue_leads SET status=?,updated_at=? WHERE id=?").run("rejected", now(), id);
           continue;
         }
