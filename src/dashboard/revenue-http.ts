@@ -77,8 +77,10 @@ export async function handleRevenueRequest(
 <div class="panel"><div class="ey">CONTROLE DO CREATOR</div><input id="token" class="token" type="password" placeholder="Token de aprovação do Revenue Engine"></div>
 <div id="metrics" class="grid"></div><div class="layout"><section><div class="panel"><h2>Leads / oportunidades</h2><div id="leads"></div></div><div class="panel"><h2>Ações pendentes</h2><div id="actions"></div></div></section><aside><div class="panel"><h2>Checkouts</h2><div id="checkouts"></div></div><div class="panel"><h2>Próximo passo</h2><div id="next"></div></div></aside></div></main><div id="toast" class="toast"></div>
 <script>
-const tokenEl=document.getElementById('token'); tokenEl.value=localStorage.getItem('rittyRevenueToken')||'';
-tokenEl.onchange=()=>localStorage.setItem('rittyRevenueToken',tokenEl.value);
+const tokenEl=document.getElementById('token');
+try{tokenEl.value=localStorage.getItem('rittyRevenueToken')||''}catch{}
+tokenEl.addEventListener('input',()=>{try{localStorage.setItem('rittyRevenueToken',tokenEl.value)}catch{}});
+document.querySelectorAll('button').forEach(b=>{b.type='button';b.style.touchAction='manipulation';b.style.pointerEvents='auto'});
 const esc=s=>String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 const money=n=>'R$ '+Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
 function toast(s){const e=document.getElementById('toast');e.textContent=s;e.style.display='block';setTimeout(()=>e.style.display='none',3500)}
@@ -97,7 +99,7 @@ async function approve(id,action){try{const path=action==='send_outreach'?'/api/
 async function sendOutreach(id){try{const j=await api('/api/revenue/outreach/send',{method:'POST',body:JSON.stringify({actionId:id})});toast(j.result||'E-mail enviado.');load()}catch(e){toast(e.message)}}
 async function createCheckout(leadId,offerId){try{const j=await api('/api/revenue/checkout',{method:'POST',body:JSON.stringify({leadId,offerId})});toast('Checkout criado.');if(j.url)window.open(j.url,'_blank');load()}catch(e){toast(e.message)}}
 async function runCycle(){try{toast('Pesquisando empresas reais...');const j=await api('/api/revenue/autopilot',{method:'POST',body:JSON.stringify({niche:'empresas que podem melhorar o site',location:'Brasil',limit:6})});toast(j.result||'Ciclo concluído.');load()}catch(e){toast(e.message)}}
-load();setInterval(load,15000);
+try{load()}catch(e){toast(e.message||String(e))} setInterval(()=>{try{load()}catch{}},15000);
 </script></body></html>`);
     return true;
   }
