@@ -265,6 +265,20 @@ function isLikelyEditorialResult(title: string, snippet: string): boolean {
   return /\b(ranking|rankings|lista das|lista de|maiores|melhores|top \d+|guia de|comparativo|como escolher|o que é|notícias|noticia|blog)\b/i.test(lower);
 }
 
+function cleanupRejectedRevenueLeads(db: AutomatonDatabase): void {
+  ensureRevenueSchema(db);
+  const rows = db.raw.prepare(
+    "SELECT id,name,website,notes FROM revenue_leads WHERE status NOT IN ('won','paid','checkout','fulfillment')"
+  ).all() as Array<{ id: string; name: string; website: string | null; notes: string | null }>;
+
+  for (const row of rows) {
+    if (!isLikelyNonCommercialProspect(row.name || "", row.notes || "", row.website || "")) continue;
+    db.raw.prepare("UPDATE revenue_leads SET status='rejected',updated_at=? WHERE id=?").run(now(), row.id);
+    db.raw.prepare("UPDATE revenue_offers SET status='cancelled',updated_at=? WHERE lead_id=? AND status NOT IN ('won','cancelled')").run(now(), row.id);
+    db.raw.prepare("UPDATE revenue_actions SET status='cancelled',updated_at=? WHERE lead_id=? AND status IN ('pending_approval','approved')").run(now(), row.id);
+  }
+}
+
 function isLikelyNonCommercialProspect(title: string, text: string, url: string): boolean {
   const lower = (title + " " + text + " " + url).toLowerCase();
   let markers = 0;
@@ -321,6 +335,7 @@ function ensureLead(db: AutomatonDatabase, lead: { name: string; website?: strin
 
 export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { niche?: string; location?: string; limit?: number; priceCents?: number } = {}): Promise<string> {
   ensureRevenueSchema(db);
+  cleanupRejectedRevenueLeads(db);
   const niche = options.niche || process.env.RITTY_REVENUE_NICHE || "negócios locais";
   const location = options.location || process.env.RITTY_REVENUE_REGION || "Brasil";
   const limit = Math.max(3, Math.min(8, options.limit || 5));
