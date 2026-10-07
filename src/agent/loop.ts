@@ -1556,7 +1556,11 @@ export async function runAgentLoop(
               return tool.name === "work_execute";
             })
           : activeGoalExists
-            ? tools.filter((tool) => !isIdleOnlyTool(tool.name) && tool.name !== "create_goal")
+            ? tools.filter(
+                (tool) =>
+                  (!isIdleOnlyTool(tool.name) || tool.name === "list_goals") &&
+                  tool.name !== "create_goal",
+              )
             : tools;
       const inferenceTools = toolsToInferenceFormat(inferenceToolSource);
       // Explicit creator commands bypass the autonomous router. The router's
