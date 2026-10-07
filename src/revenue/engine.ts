@@ -65,6 +65,22 @@ export function ensureRevenueSchema(db: AutomatonDatabase): void {
   fs.mkdirSync(REVENUE_ROOT, { recursive: true });
 }
 
+async function verifyStripeConnectivity(): Promise<void> {
+  const secret = process.env.STRIPE_SECRET_KEY;
+  if (!secret) {
+    console.log("[revenue] Stripe config: MISSING_STRIPE_SECRET_KEY");
+    return;
+  }
+  try {
+    const response = await fetch("https://api.stripe.com/v1/balance", {
+      headers: { authorization: "Bearer " + secret },
+    });
+    console.log("[revenue] Stripe connectivity:", response.ok ? "OK" : "FAILED_HTTP_" + response.status);
+  } catch (error) {
+    console.log("[revenue] Stripe connectivity: FAILED_NETWORK", error instanceof Error ? error.message : String(error));
+  }
+}
+
 function decodeHtml(input: string): string {
   return input
     .replace(/&amp;/g, "&").replace(/&quot;/g, '"')
@@ -213,6 +229,37 @@ async function searchBing(query: string, limit = 8): Promise<Array<{ title: stri
   }
 }
 
+async function searchBingRss(query: string, limit = 8): Promise<Array<{ title: string; url: string; snippet: string }>> {
+  const searchUrl = "https://www.bing.com/search?format=rss&q=" + encodeURIComponent(query);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12_000);
+  try {
+    const response = await fetch(searchUrl, {
+      signal: controller.signal,
+      headers: { "user-agent": "Mozilla/5.0 RITTY/1.0", accept: "application/rss+xml,text/xml;q=0.9,*/*;q=0.1" },
+    });
+    if (!response.ok) return [];
+    const xml = await response.text();
+    const results: Array<{ title: string; url: string; snippet: string }> = [];
+    const items = xml.split(/<item>/i).slice(1);
+    for (const item of items) {
+      if (results.length >= limit) break;
+      const title = item.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || "";
+      const link = item.match(/<link>([\s\S]*?)<\/link>/i)?.[1] || "";
+      const description = item.match(/<description>([\s\S]*?)<\/description>/i)?.[1] || "";
+      const url = link.replace(/<!\[CDATA\[|\]\]>/g, "").trim();
+      if (!/^https?:\/\//i.test(url)) continue;
+      try {
+        const host = new URL(url).hostname.toLowerCase();
+        if (!host.endsWith(".com.br")) continue;
+        if (/(instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org)/i.test(host)) continue;
+      } catch { continue; }
+      results.push({ title: decodeHtml(title).slice(0,220), url, snippet: decodeHtml(description).slice(0,700) });
+    }
+    return results;
+  } finally { clearTimeout(timer); }
+}
+
 function heuristicScore(text: string, url: string): { score: number; reasons: string[] } {
   const lower = (text + " " + url).toLowerCase();
   let score = 30;
@@ -246,15 +293,24 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
   const location = options.location || process.env.RITTY_REVENUE_REGION || "Brasil";
   const limit = Math.max(3, Math.min(8, options.limit || 5));
   const priceCents = Number.isFinite(options.priceCents) && (options.priceCents || 0) > 0 ? Number(options.priceCents) : DEFAULT_PRICE_CENTS;
-  const query = `${niche} ${location} site:.com.br`;
+  const query = `${niche} ${location}`;
   let searchResults: Array<{ title: string; url: string; snippet: string }> = [];
-  try { searchResults = await searchDuckDuckGo(query, limit); if (searchResults.length === 0) searchResults = await searchBing(query, limit); }
-  catch (error) { return `Revenue engine could not search public web: ${error instanceof Error ? error.message : String(error)}`; }
+  try {
+    searchResults = await searchDuckDuckGo(query, limit);
+    if (searchResults.length === 0) searchResults = await searchBing(query, limit);
+    if (searchResults.length === 0) searchResults = await searchBingRss(query, limit);
+  } catch (error) {
+    return "Revenue engine could not search public web: " + (error instanceof Error ? error.message : String(error));
+  }
+  await verifyStripeConnectivity();
 
   const candidateIds: string[] = [];
   for (const result of searchResults) {
     try {
-      const id = ensureLead(db, { name: result.title || new URL(result.url).hostname, website: result.url, source: "duckduckgo", query, location, snippet: result.snippet });
+      const host = new URL(result.url).hostname.toLowerCase();
+      if (!host.endsWith(".com.br")) continue;
+      if (/(instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org)/i.test(host)) continue;
+      const id = ensureLead(db, { name: result.title || host, website: result.url, source: "public-search", query, location, snippet: result.snippet });
       candidateIds.push(id);
     } catch {}
   }
@@ -291,6 +347,10 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
   candidates.sort((a, b) => b.score - a.score);
   let best: { id: string; score: number; name: string; website: string; reasons: string[] } | null = null;
   for (const candidate of candidates.slice(0, 3)) {
+    const activeOffer = db.raw.prepare(
+      "SELECT id,status FROM revenue_offers WHERE lead_id=? AND status NOT IN ('cancelled','failed') ORDER BY created_at DESC LIMIT 1",
+    ).get(candidate.id) as { id: string; status: string } | undefined;
+    if (activeOffer) continue;
     try {
       await enrichLead(db, candidate.id);
       const enriched = db.raw.prepare("SELECT id,name,website,email,phone,contact,contact_url FROM revenue_leads WHERE id=?").get(candidate.id) as any;
@@ -306,7 +366,16 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
       }
     } catch {}
   }
-  if (!best) best = candidates[0];
+  if (!best) {
+    return [
+      "REVENUE CYCLE COMPLETE",
+      "Prospects discovered: " + searchResults.length,
+      "Prospects researched: " + researched,
+      "No new prospect was selected because the qualified results already have an active offer.",
+      "Duplicate offer/outreach creation: BLOCKED.",
+      "Financial movement: NOT PERFORMED.",
+    ].join("\n");
+  }
 
   const offerId = ulid();
   const safeName = best.name.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 70) || best.id;
