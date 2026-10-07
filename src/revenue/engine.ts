@@ -214,7 +214,8 @@ async function searchBing(query: string, limit = 8): Promise<Array<{ title: stri
       try {
         const host = new URL(url).hostname.toLowerCase();
         if (!host.includes(".") || host.length < 5) continue;
-        if (/(instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org)/i.test(host)) continue;
+        if (isLikelyNonCommercialProspect(result.title, result.snippet, result.url)) continue;
+      if (/(instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org)/i.test(host)) continue;
       } catch { continue; }
       const caption = item.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
       results.push({
@@ -265,6 +266,33 @@ function isLikelyEditorialResult(title: string, snippet: string): boolean {
   return /\b(ranking|rankings|lista das|lista de|maiores|melhores|top \d+|guia de|comparativo|como escolher|o que é|notícias|noticia|blog)\b/i.test(lower);
 }
 
+function isLikelyNonCommercialProspect(title: string, text: string, url: string): boolean {
+  const lower = (title + " " + text + " " + url).toLowerCase();
+  let markers = 0;
+
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const pathname = parsed.pathname.toLowerCase();
+
+    if (/\.(edu|gov|mil)(\.[a-z]{2})?$/.test(host) || /\.(ac|edu)\.[a-z]{2}$/.test(host)) {
+      return true;
+    }
+    if (/^(www\.)?(university|universidade|college|faculdade|school|gov|government|cityof|countyof)/i.test(host)) {
+      return true;
+    }
+    if (/(choose-location|select-location|investor|annual-report|careers|press-room|corporate)/i.test(pathname)) {
+      markers += 2;
+    }
+  } catch {}
+
+  if (/\b(university|universidade|college|faculdade|campus|faculty|students|professor|department|school district|government|governmental|ministry)\b/i.test(lower)) markers += 2;
+  if (/\b(investor relations|annual report|shareholders|press release|corporate headquarters|global home|select your location|choose your location|supplier portal)\b/i.test(lower)) markers += 2;
+  if (/\b(fedex|ups|dhl|amazon|microsoft|oracle|ibm|accenture|deloitte|pwc|ey|kpmg)\b/i.test(lower)) markers += 2;
+
+  return markers >= 2;
+}
+
 function heuristicScore(text: string, url: string): { score: number; reasons: string[] } {
   const lower = (text + " " + url).toLowerCase();
   let score = 30;
@@ -297,7 +325,11 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
   const niche = options.niche || process.env.RITTY_REVENUE_NICHE || "negócios locais";
   const location = options.location || process.env.RITTY_REVENUE_REGION || "Brasil";
   const limit = Math.max(3, Math.min(8, options.limit || 5));
-  const priceCents = Number.isFinite(options.priceCents) && (options.priceCents || 0) > 0 ? Number(options.priceCents) : DEFAULT_PRICE_CENTS;
+  const requestedPriceCents =
+    Number.isFinite(options.priceCents) && (options.priceCents || 0) > 0
+      ? Number(options.priceCents)
+      : DEFAULT_PRICE_CENTS;
+  const priceCents = Math.max(150000, requestedPriceCents);
   const normalizedLocation = location.toLowerCase();
   const brazilTarget = /(^|\\b)(brasil|brazil|br|são paulo|sao paulo|rio de janeiro|brasília|brasilia)(\\b|$)/i.test(location);
   const globalTarget = /(^|\\b)(global|world|worldwide|mundo|international|internacional)(\\b|$)/i.test(normalizedLocation);
@@ -380,7 +412,12 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
           continue;
         }
       } catch { continue; }
-      if (page.status >= 400 || page.text.trim().length < 120 || isLikelyEditorialResult(page.title, page.text.slice(0, 3000))) {
+      if (
+        page.status >= 400 ||
+        page.text.trim().length < 120 ||
+        isLikelyEditorialResult(page.title, page.text.slice(0, 3000)) ||
+        isLikelyNonCommercialProspect(page.title, page.text, page.url)
+      ) {
         db.raw.prepare("UPDATE revenue_leads SET status=?,updated_at=? WHERE id=?").run("rejected", now(), id);
         continue;
       }
