@@ -1173,7 +1173,10 @@ async function sendDeliveryEmail(
   url: string,
   name: string,
 ): Promise<void> {
-  if (!to || !process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) return;
+  if (!to) return;
+  if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
+    throw new Error("Resend is not configured for delivery email.");
+  }
   await sendResendEmail(
     to,
     "Seu novo site — " + name,
@@ -1194,7 +1197,10 @@ async function publishVercel(
   projectName: string,
 ): Promise<string | null> {
   const token = process.env.VERCEL_TOKEN;
-  if (!token) return null;
+  if (!token) {
+    console.log("[revenue] Vercel publish skipped: VERCEL_TOKEN is not configured.");
+    return null;
+  }
 
   const teamId = process.env.VERCEL_TEAM_ID;
   const query = teamId ? "?teamId=" + encodeURIComponent(teamId) : "";
@@ -1304,20 +1310,21 @@ export async function fulfillPaidOrder(
     }
 
     const deliveryUrl = publishedUrl || previewUrl;
+    const delivered = Boolean(publishedUrl);
     db.raw
       .prepare(
-        "UPDATE revenue_fulfillments SET status='delivered',work_id=?,preview_url=?,published_url=?,updated_at=? WHERE id=?",
+        "UPDATE revenue_fulfillments SET status=?,work_id=?,preview_url=?,published_url=?,updated_at=? WHERE id=?",
       )
-      .run(work.id, previewUrl, deliveryUrl, now(), fulfillmentId);
+      .run(delivered ? "delivered" : "ready_for_publish", work.id, previewUrl, publishedUrl, now(), fulfillmentId);
 
     db.raw
-      .prepare("UPDATE revenue_leads SET status='won',updated_at=? WHERE id=?")
-      .run(now(), lead.id);
+      .prepare("UPDATE revenue_leads SET status=?,updated_at=? WHERE id=?")
+      .run(delivered ? "won" : "paid", now(), lead.id);
 
     if (offerId) {
       db.raw
-        .prepare("UPDATE revenue_offers SET status='won',preview_url=?,updated_at=? WHERE id=?")
-        .run(deliveryUrl, now(), offerId);
+        .prepare("UPDATE revenue_offers SET status=?,preview_url=?,updated_at=? WHERE id=?")
+        .run(delivered ? "won" : "ready_for_publish", previewUrl, now(), offerId);
     }
 
     await sendDeliveryEmail(
