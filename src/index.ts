@@ -259,15 +259,15 @@ async function run(): Promise<void> {
     config.inferenceModel =
       requestedSovereignModel && allowedSovereignModels.has(requestedSovereignModel)
         ? requestedSovereignModel
-        : "openai/gpt-oss-20b";
+        : "openai/gpt-oss-120b";
 
     // Normalize persisted strategy fields to the supported sovereign model.
     config.modelStrategy = {
       ...DEFAULT_MODEL_STRATEGY_CONFIG,
       ...(config.modelStrategy ?? {}),
-      inferenceModel: "openai/gpt-oss-20b",
-      lowComputeModel: "openai/gpt-oss-20b",
-      criticalModel: "openai/gpt-oss-20b",
+      inferenceModel: "openai/gpt-oss-120b",
+      lowComputeModel: "openai/gpt-oss-120b",
+      criticalModel: "openai/gpt-oss-120b",
     };
 
     saveConfig(config);
@@ -305,6 +305,40 @@ async function run(): Promise<void> {
     `[${new Date().toISOString()}] Persistent SQLite database: ${dbPath}`,
   );
   startDashboardServer({ db, config });
+
+  // Revenue Engine runs prospecting autonomously on a safe background loop.
+  // It never sends external outreach or moves money; those actions still require
+  // creator approval through the existing Revenue Engine controls.
+  const revenueAutopilotEnabled =
+    String(process.env.RITTY_REVENUE_AUTOPILOT_ENABLED ?? "true").toLowerCase() !== "false";
+  const revenueAutopilotIntervalMs = Math.max(
+    120_000,
+    Number(process.env.RITTY_REVENUE_AUTOPILOT_INTERVAL_MS || 600_000),
+  );
+  let revenueAutopilotBusy = false;
+  const runRevenueAutopilot = async (reason: string): Promise<void> => {
+    if (!revenueAutopilotEnabled || revenueAutopilotBusy) return;
+    revenueAutopilotBusy = true;
+    try {
+      const { revenueAutopilotCycle } = await import("./revenue/engine.js");
+      const result = await revenueAutopilotCycle(db, {
+        niche: process.env.RITTY_REVENUE_NICHE || "empresas que podem melhorar o site",
+        location: process.env.RITTY_REVENUE_REGION || "Brasil",
+        limit: Number(process.env.RITTY_REVENUE_LIMIT || 6),
+      });
+      logger.info(`[REVENUE AUTOPILOT] ${reason}: ${String(result).slice(0, 1200)}`);
+    } catch (error) {
+      logger.error(
+        `[REVENUE AUTOPILOT] ${reason} failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      revenueAutopilotBusy = false;
+    }
+  };
+  if (revenueAutopilotEnabled) {
+    setTimeout(() => { void runRevenueAutopilot("boot"); }, 15_000);
+    setInterval(() => { void runRevenueAutopilot("interval"); }, revenueAutopilotIntervalMs);
+  }
 
   // Run the durable work engine E2E once after boot. This is deterministic and non-financial.
   try {

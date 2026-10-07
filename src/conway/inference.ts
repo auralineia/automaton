@@ -18,7 +18,10 @@ import { ResilientHttpClient } from "./http-client.js";
 import { compactSovereignGroqMessages, SOVEREIGN_GROQ_MAX_OUTPUT_TOKENS } from "./groq-context.js";
 import { createLogger } from "../observability/logger.js";
 
-const INFERENCE_TIMEOUT_MS = 30_000;
+const INFERENCE_TIMEOUT_MS = Math.max(
+  15_000,
+  Number(process.env.RITTY_INFERENCE_TIMEOUT_MS || 30_000),
+);
 const SOVEREIGN_PROVIDER_RETRIES = 0;
 const logger = createLogger("inference");
 
@@ -66,7 +69,14 @@ export function createInferenceClient(
 
   const throttleGroq = async (): Promise<void> => {
     if (process.env.RITTY_MODE !== "sovereign") return;
-    const minIntervalMs = Number(process.env.RITTY_GROQ_MIN_INTERVAL_MS || 61000);
+    const configuredIntervalMs = Number(process.env.RITTY_GROQ_MIN_INTERVAL_MS || 5000);
+    // Keep sovereign execution responsive while staying below typical per-minute
+    // request ceilings; an excessively high legacy value would otherwise stall
+    // the entire agent loop for a full minute per turn.
+    const minIntervalMs = Math.min(
+      15_000,
+      Math.max(2_000, Number.isFinite(configuredIntervalMs) ? configuredIntervalMs : 5_000),
+    );
     if (!Number.isFinite(minIntervalMs) || minIntervalMs <= 0) return;
 
     const elapsed = Date.now() - lastGroqRequestAt;
