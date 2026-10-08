@@ -575,11 +575,15 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
     businessType: string;
     siteAnalysis: string;
   } | null = null;
+  const blockedByActiveOffer: string[] = [];
   for (const candidate of candidates.slice(0, 3)) {
     const activeOffer = db.raw.prepare(
       "SELECT id,status FROM revenue_offers WHERE lead_id=? AND status NOT IN ('cancelled','failed') ORDER BY created_at DESC LIMIT 1",
     ).get(candidate.id) as { id: string; status: string } | undefined;
-    if (activeOffer) continue;
+    if (activeOffer) {
+      blockedByActiveOffer.push(candidate.name + " [" + candidate.score + "] offer=" + activeOffer.status);
+      continue;
+    }
     try {
       await enrichLead(db, candidate.id);
       const enriched = db.raw.prepare("SELECT id,name,website,email,phone,contact,contact_url,opportunity,site_analysis,services,business_type,site_score FROM revenue_leads WHERE id=?").get(candidate.id) as any;
@@ -656,7 +660,9 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
       "REVENUE CYCLE COMPLETE",
       "Prospects discovered: " + searchResults.length,
       "Prospects researched: " + researched,
-      "No new prospect was selected because the qualified results already have an active offer.",
+      "Qualified candidates: " + (candidates.length ? candidates.map((item) => item.name + " [" + item.score + "]").join("; ") : "none"),
+      "Blocked by existing offers: " + (blockedByActiveOffer.length ? blockedByActiveOffer.join("; ") : "none"),
+      "No new prospect was selected because every researched candidate was rejected, low-opportunity, or already had an active offer.",
       "Duplicate offer/outreach creation: BLOCKED.",
       "Financial movement: NOT PERFORMED.",
     ].join("\n");
