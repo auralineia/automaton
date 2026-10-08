@@ -558,7 +558,7 @@ function buildDemoSite(lead: any): {
   return {
     files: [
       { path: "index.html", content: html },
-      { path: "style.css", content: finalCss },
+      { path: "style.css", content: css },
       { path: "script.js", content: "document.addEventListener('DOMContentLoaded',function(){document.body.dataset.ready='true';const root=document.documentElement;const io=new IntersectionObserver(es=>es.forEach(e=>e.isIntersecting&&e.target.classList.add('visible')),{threshold:.12});document.querySelectorAll('.reveal').forEach(e=>io.observe(e));window.addEventListener('pointermove',e=>{root.style.setProperty('--mx',((e.clientX/innerWidth)-.5)*28+'px');root.style.setProperty('--my',((e.clientY/innerHeight)-.5)*28+'px')},{passive:true});});" },
     ],
     title,
@@ -1351,7 +1351,7 @@ export function buildFinalSite(lead: any): {
   return {
     files: [
       { path: "index.html", content: html },
-      { path: "style.css", content: css },
+      { path: "style.css", content: finalCss },
       { path: "script.js", content: js },
     ],
     title: name + " — Site",
