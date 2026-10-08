@@ -404,7 +404,10 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
     Number.isFinite(options.priceCents) && (options.priceCents || 0) > 0
       ? Number(options.priceCents)
       : DEFAULT_PRICE_CENTS;
-  const priceCents = Math.min(50000, Math.max(20000, requestedPriceCents));
+  const priceCents =
+    requestedPriceCents >= 20000 && requestedPriceCents <= 50000
+      ? requestedPriceCents
+      : DEFAULT_PRICE_CENTS;
   const normalizedLocation = location.toLowerCase();
   const brazilTarget = /(^|\\b)(brasil|brazil|br|são paulo|sao paulo|rio de janeiro|brasília|brasilia)(\\b|$)/i.test(location);
   const globalTarget = /(^|\\b)(global|world|worldwide|mundo|international|internacional)(\\b|$)/i.test(normalizedLocation);
