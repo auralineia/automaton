@@ -514,10 +514,11 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
   for (const result of searchResults) {
     try {
       const discovered = new URL(result.url);
-      const host = discovered.hostname.toLowerCase();
+      const host = discovered.hostname.toLowerCase().replace(/^www\./, "");
       if (!host.includes(".") || host.length < 5) continue;
+      if (brazilTarget && !globalTarget && !host.endsWith(".com.br")) continue;
+      if (/^(youtube\.com|youtu\.be|instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org|seattlemet\.com|theinfatuation\.com|jeopardylabs\.com)$/i.test(host)) continue;
       if (isLikelyNonCommercialProspect(result.title, result.snippet, result.url)) continue;
-      if (/(instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org)/i.test(host)) continue;
       if (isLikelyEditorialResult(result.title, result.snippet)) continue;
       const id = ensureLead(db, { name: result.title || host, website: result.url, source: "public-search", query, location, snippet: result.snippet });
       candidateIds.push(id);
