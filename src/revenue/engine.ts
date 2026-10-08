@@ -4,7 +4,7 @@ import dns from "node:dns/promises";
 import net from "node:net";
 import { ulid } from "ulid";
 import type { AutomatonDatabase } from "../types.js";
-import { enrichLead, prepareOutreach } from "./commerce.js";
+import { enrichLead, prepareOutreach, ensureRevenueCommerceSchema } from "./commerce.js";
 
 const REVENUE_ROOT = process.env.RITTY_REVENUE_ROOT || "/root/.automaton/revenue";
 const DEFAULT_PRICE_CENTS = Number(process.env.RITTY_OFFER_PRICE_CENTS || 39700);
@@ -333,9 +333,70 @@ function ensureLead(db: AutomatonDatabase, lead: { name: string; website?: strin
   return id;
 }
 
+
+function createDueFollowUps(db: AutomatonDatabase): void {
+  ensureRevenueCommerceSchema(db);
+  const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+  const rows = db.raw.prepare(
+    `SELECT l.id,l.name,l.email,l.contact,l.contact_url,o.preview_url
+     FROM revenue_leads l
+     LEFT JOIN revenue_offers o ON o.id=(
+       SELECT id FROM revenue_offers WHERE lead_id=l.id ORDER BY created_at DESC LIMIT 1
+     )
+     WHERE l.status='contacted'
+       AND l.email IS NOT NULL
+       AND l.email!=''
+       AND EXISTS(
+         SELECT 1 FROM revenue_messages m
+         WHERE m.lead_id=l.id AND m.status='sent' AND m.created_at<=?
+       )
+       AND NOT EXISTS(
+         SELECT 1 FROM revenue_events e
+         WHERE e.lead_id=l.id AND e.type='response_received'
+       )
+       AND NOT EXISTS(
+         SELECT 1 FROM revenue_actions a
+         WHERE a.lead_id=l.id AND a.action='follow_up' AND a.status IN ('pending_approval','approved')
+       )
+     ORDER BY l.updated_at ASC LIMIT 6`,
+  ).all(cutoff) as Array<any>;
+
+  for (const row of rows) {
+    const previewUrl = String(row.preview_url || row.contact_url || "");
+    const messageId = ulid();
+    const body = [
+      "Olá, time da " + row.name + ",",
+      "",
+      "Só passando para deixar a demonstração personalizada que preparei:",
+      previewUrl,
+      "",
+      "Encontrei alguns pontos no site atual que podem ficar mais claros no celular e no caminho até o contato.",
+      "Nesta condição inicial, a implementação completa fica em R$ 397,00.",
+      "",
+      "Se fizer sentido, responda este e-mail e eu sigo com a adaptação.",
+      "",
+      "RITTY — Revenue Engine",
+    ].filter(Boolean).join("\\n");
+    db.raw.prepare(
+      "INSERT INTO revenue_messages (id,lead_id,channel,destination,subject,body,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+    ).run(
+      messageId, row.id, "email", row.email || row.contact || null,
+      "Só deixando a demonstração por aqui", body, "draft", now(), now(),
+    );
+    db.raw.prepare(
+      "INSERT INTO revenue_actions (id,lead_id,action,status,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+    ).run(
+      ulid(), row.id, "follow_up", "pending_approval",
+      JSON.stringify({ messageId, reason: "Sem resposta após 72h; follow-up preparado.", previewUrl }),
+      now(), now(),
+    );
+  }
+}
+
 export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { niche?: string; location?: string; limit?: number; priceCents?: number } = {}): Promise<string> {
   ensureRevenueSchema(db);
   cleanupRejectedRevenueLeads(db);
+  createDueFollowUps(db);
   const niche = options.niche || process.env.RITTY_REVENUE_NICHE || "negócios locais";
   const location = options.location || process.env.RITTY_REVENUE_REGION || "Brasil";
   const limit = Math.max(3, Math.min(8, options.limit || 5));
@@ -468,13 +529,65 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
     try {
       await enrichLead(db, candidate.id);
       const enriched = db.raw.prepare("SELECT id,name,website,email,phone,contact,contact_url,opportunity,site_analysis,services,business_type,site_score FROM revenue_leads WHERE id=?").get(candidate.id) as any;
-      if (enriched && (enriched.email || enriched.phone || enriched.contact || enriched.contact_url)) {
+      if (enriched) {
+        const hasDirectContact = Boolean(enriched.email || enriched.phone || enriched.contact || enriched.contact_url);
+        let analysis: any = {};
+        try { analysis = JSON.parse(String(enriched.site_analysis || "{}")); } catch {}
+        const issueCount = Array.isArray(analysis.issues) ? analysis.issues.length : 0;
+        const siteQuality = Number(enriched.site_score || 0);
+        const opportunityScore = Math.min(
+          100,
+          Math.round(
+            Number(candidate.score || 0) * 0.42 +
+            Math.max(0, 100 - siteQuality) * 0.48 +
+            (hasDirectContact ? 10 : 0),
+          ),
+        );
+
+        if (!hasDirectContact) {
+          db.raw.prepare("UPDATE revenue_leads SET status='rejected',notes=?,updated_at=? WHERE id=?").run(
+            "Rejeitado: não há e-mail, telefone, WhatsApp ou página de contato pública utilizável.",
+            now(), candidate.id,
+          );
+          continue;
+        }
+
+        if (siteQuality > 84 && issueCount < 2) {
+          db.raw.prepare("UPDATE revenue_leads SET status='rejected',notes=?,updated_at=? WHERE id=?").run(
+            "Rejeitado: site já apresenta qualidade alta e poucas oportunidades claras para uma oferta de redesign de entrada.",
+            now(), candidate.id,
+          );
+          continue;
+        }
+
+        if (opportunityScore < 52) {
+          db.raw.prepare("UPDATE revenue_leads SET status='qualified_low_opportunity',score=?,updated_at=? WHERE id=?").run(
+            opportunityScore, now(), candidate.id,
+          );
+          continue;
+        }
+
+        db.raw.prepare("UPDATE revenue_leads SET score=?,notes=?,updated_at=? WHERE id=?").run(
+          opportunityScore,
+          JSON.stringify({
+            opportunityScore,
+            siteQuality,
+            issueCount,
+            hasDirectContact,
+            reasons: candidate.reasons,
+            priorities: analysis.priorities || [],
+          }),
+          now(), candidate.id,
+        );
+
         best = {
           id: enriched.id,
-          score: Number(enriched.site_score || candidate.score || 0),
+          score: opportunityScore,
           name: enriched.name || candidate.name,
           website: enriched.website || candidate.website,
-          reasons: candidate.reasons,
+          reasons: candidate.reasons.concat(
+            Array.isArray(analysis.priorities) ? analysis.priorities.slice(0, 2) : [],
+          ),
           opportunity: String(enriched.opportunity || ""),
           services: String(enriched.services || "[]"),
           businessType: String(enriched.business_type || "negócio local"),
