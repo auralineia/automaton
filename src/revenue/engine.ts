@@ -345,11 +345,12 @@ function buildRevenueSearchQueries(
   const queries: string[] = [];
   for (const seed of chosenSeeds) {
     for (const city of chosenCities) {
-      queries.push(`site:.com.br "${seed}" "${city}" "WhatsApp" "contato" -noticias -blog -ranking -lista -vagas`);
-      queries.push(`site:.com.br "${seed}" "${city}" "orçamento" "serviços" -noticias -blog -ranking -lista`);
+      queries.push(`site:.com.br "${seed}" "${city}" -noticias -blog -ranking -lista -vagas`);
+      queries.push(`site:.com.br "${seed}" "${city}" "contato" -noticias -blog -ranking -lista -vagas`);
+      queries.push(`site:.com.br "${seed}" "${city}" "WhatsApp" -noticias -blog -ranking -lista -vagas`);
     }
   }
-  return queries.slice(0, 12);
+  return queries.slice(0, 18);
 }
 
 function cleanupRejectedRevenueLeads(db: AutomatonDatabase): void {
