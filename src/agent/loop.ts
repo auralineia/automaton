@@ -994,9 +994,32 @@ export async function runAgentLoop(
         }
       }
 
-      // Revenue autonomy: retire the old generic value-creation queue without deleting history,
+      // Revenue autonomy: retire unrelated autonomous goals without deleting history,
       // then seed one concrete revenue-acquisition cycle every configured interval.
+      // This prevents stale goals from consuming inference while RITTY is in sales mode.
       if (pendingInput?.source !== "creator") {
+        try {
+          const unrelatedGoals = db.raw.prepare(
+            "SELECT id,title FROM goals WHERE status='active' AND lower(COALESCE(title,'')) NOT LIKE 'revenue acquisition cycle%'",
+          ).all() as Array<{ id: string; title: string }>;
+          for (const goal of unrelatedGoals) {
+            const ts = new Date().toISOString();
+            db.raw.prepare(
+              "UPDATE task_graph SET status='cancelled', assigned_to=NULL, completed_at=COALESCE(completed_at,?) WHERE goal_id=? AND status IN ('pending','assigned','running')",
+            ).run(ts, goal.id);
+            db.raw.prepare(
+              "UPDATE goals SET status='paused' WHERE id=? AND status='active'",
+            ).run(goal.id);
+            logger.info("[AUTONOMY] Paused unrelated active goal during revenue mode.", {
+              goalId: goal.id,
+              title: goal.title,
+            });
+          }
+        } catch (error) {
+          logger.warn("[AUTONOMY] Unrelated goal cleanup skipped", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
         try {
           const legacyGoals = db.raw.prepare(
             "SELECT id FROM goals WHERE status='active' AND lower(COALESCE(title,'')) LIKE 'autonomous value-creation cycle%'",
@@ -1025,7 +1048,7 @@ export async function runAgentLoop(
         isAutonomousCycleDue(db)
       ) {
         try {
-          const offerPriceCents = Math.max(50_000, Number(process.env.RITTY_OFFER_PRICE_CENTS || "150000"));
+          const offerPriceCents = Math.min(50_000, Math.max(20_000, Number(process.env.RITTY_OFFER_PRICE_CENTS || "39700")));
           const goalId = insertGoal(db.raw, {
             title: "Revenue acquisition cycle",
             description:
