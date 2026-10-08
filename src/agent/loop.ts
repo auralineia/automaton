@@ -1079,18 +1079,49 @@ export async function runAgentLoop(
       }
 
       // Revenue mode gets a deterministic execution path: the sales cycle itself does not
-      // One-time production E2E verification: force one revenue cycle after this
-      // deployment so we can observe the real discovery/qualification output in logs.
-      // The marker prevents this verification from running again on later restarts.
-      if (db.getKV("revenue_deterministic_test_v2") !== "1") {
-        db.deleteKV("autonomy.last_seeded_at");
-        db.setKV("revenue_deterministic_test_v2", "1");
-        logger.info("[REVENUE] One-time production E2E verification armed.");
-      }
-
       // need parent-agent inference or the general goal planner. This prevents the model
       // from drifting into unrelated work_create/create_goal actions while a sales cycle
       // is active. The revenue engine remains approval-gated for external outreach and checkout.
+      //
+      // One-time production E2E verification is independent of the orchestrator state so a
+      // stale delegated goal cannot swallow the verification before the revenue engine runs.
+      if (
+        db.getKV("revenue_deterministic_test_v3") !== "1" &&
+        pendingInput?.source !== "creator" &&
+        !db.getKV("creator_task_active") &&
+        db.raw.prepare("SELECT 1 FROM inbox_messages WHERE status='received' AND from_address='dashboard://creator' LIMIT 1").get() == null
+      ) {
+        db.setKV("revenue_deterministic_test_v3", "1");
+        db.deleteKV("autonomy.last_seeded_at");
+        try {
+          const { revenueAutopilotCycle } = await import("../revenue/engine.js");
+          const offerPriceCents = Math.min(
+            50_000,
+            Math.max(20_000, Number(process.env.RITTY_OFFER_PRICE_CENTS || "39700")),
+          );
+          const result = await revenueAutopilotCycle(db, {
+            niche: process.env.RITTY_REVENUE_NICHE || "empresas que podem melhorar o site",
+            location: process.env.RITTY_REVENUE_REGION || "Brasil",
+            limit: Number(process.env.RITTY_REVENUE_LIMIT || 6),
+            priceCents: offerPriceCents,
+          });
+          logger.info(
+            "[REVENUE] Forced production E2E cycle. " +
+            String(result).slice(0, 2800).replace(/\n/g, " | "),
+          );
+        } catch (error) {
+          logger.error(
+            "[REVENUE] Forced production E2E cycle failed.",
+            error instanceof Error ? error : undefined,
+          );
+        }
+        const nextEligibleAt = new Date(Date.now() + getAutonomousCycleIntervalMs()).toISOString();
+        db.setKV("sleep_until", nextEligibleAt);
+        db.setAgentState("sleeping");
+        onStateChange?.("sleeping");
+        running = false;
+        break;
+      }
       if (
         pendingInput?.source !== "creator" &&
         !db.getKV("creator_task_active") &&
