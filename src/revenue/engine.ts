@@ -505,6 +505,32 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
         return false;
       }
     });
+
+    // Optional verified public prospect seeds are a fallback for noisy search providers.
+    // They still pass through the exact same research, scoring, duplicate-offer protection,
+    // and creator approval gates as organically discovered prospects.
+    const seededProspects = String(process.env.RITTY_REVENUE_SEED_URLS || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, 12);
+    for (const seedUrl of seededProspects) {
+      try {
+        const parsed = new URL(seedUrl);
+        const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+        if (!/^https?:$/i.test(parsed.protocol) || !host.includes(".")) continue;
+        if (brazilTarget && !globalTarget && !host.endsWith(".com.br")) continue;
+        if (!searchResults.some((item) => {
+          try { return new URL(item.url).hostname.toLowerCase().replace(/^www\./, "") === host; } catch { return false; }
+        })) {
+          searchResults.push({
+            title: host,
+            url: parsed.origin + "/",
+            snippet: "Configured public prospect fallback",
+          });
+        }
+      } catch {}
+    }
   } catch (error) {
     return "Revenue engine could not search public web: " + (error instanceof Error ? error.message : String(error));
   }
