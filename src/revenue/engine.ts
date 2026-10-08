@@ -7,7 +7,7 @@ import type { AutomatonDatabase } from "../types.js";
 import { enrichLead, prepareOutreach } from "./commerce.js";
 
 const REVENUE_ROOT = process.env.RITTY_REVENUE_ROOT || "/root/.automaton/revenue";
-const DEFAULT_PRICE_CENTS = Number(process.env.RITTY_OFFER_PRICE_CENTS || 150000);
+const DEFAULT_PRICE_CENTS = Number(process.env.RITTY_OFFER_PRICE_CENTS || 39700);
 
 function now(): string { return new Date().toISOString(); }
 
@@ -343,7 +343,7 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
     Number.isFinite(options.priceCents) && (options.priceCents || 0) > 0
       ? Number(options.priceCents)
       : DEFAULT_PRICE_CENTS;
-  const priceCents = Math.max(150000, requestedPriceCents);
+  const priceCents = Math.min(50000, Math.max(20000, requestedPriceCents));
   const normalizedLocation = location.toLowerCase();
   const brazilTarget = /(^|\\b)(brasil|brazil|br|são paulo|sao paulo|rio de janeiro|brasília|brasilia)(\\b|$)/i.test(location);
   const globalTarget = /(^|\\b)(global|world|worldwide|mundo|international|internacional)(\\b|$)/i.test(normalizedLocation);
