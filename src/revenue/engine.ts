@@ -475,6 +475,7 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
   const globalTarget = /(^|\\b)(global|world|worldwide|mundo|international|internacional)(\\b|$)/i.test(normalizedLocation);
   const domainHint = brazilTarget && !globalTarget ? "site:.com.br " : "";
   const queries = buildRevenueSearchQueries(db, niche, location).map((q) => q.replace(/^site:\.com\.br\\s*/, domainHint));
+  const query = queries[0] || niche;
   let searchResults: Array<{ title: string; url: string; snippet: string }> = [];
   try {
     const rawLimit = Math.max(12, Math.min(18, limit * 3));
