@@ -271,6 +271,17 @@ function isLikelyEditorialResult(title: string, snippet: string): boolean {
   return /\b(ranking|lista das|lista de|maiores|melhores|top \d+|guia de|comparativo|notícias|noticia|notícias)\b/i.test(snippetLower);
 }
 
+function isPlaceholderProspect(title: string, snippet: string, url: string): boolean {
+  const lowerTitle = String(title || "").toLowerCase().trim();
+  const lowerText = String(snippet || "").toLowerCase();
+  const lowerUrl = String(url || "").toLowerCase();
+  const genericTitle =
+    /^(site em construção|site em construcao|em construção|em construcao|under construction|coming soon|welcome|home|homepage|página inicial|pagina inicial|novo site|new website)[\s!|._-]*$/i.test(lowerTitle) ||
+    /^(site em construção|site em construcao|em construção|em construcao|under construction|coming soon)[\s!|._-]*/i.test(lowerTitle);
+  const placeholderSignals = /(site em construção|site em construcao|under construction|coming soon|em breve|template|webnode)/i.test(lowerTitle + " " + lowerText + " " + lowerUrl);
+  return genericTitle && placeholderSignals;
+}
+
 function buildRevenueSearchQueries(
   db: AutomatonDatabase,
   niche: string,
@@ -300,6 +311,16 @@ function buildRevenueSearchQueries(
     "contabilidade",
     "vidraçaria",
     "empresa de ar condicionado",
+    "funilaria e pintura",
+    "auto elétrica",
+    "lavanderia",
+    "imobiliária",
+    "fotografia profissional",
+    "fisioterapia",
+    "pilates",
+    "dentista",
+    "restaurante",
+    "empresa de segurança",
   ];
   const cities = [
     "São Paulo",
@@ -310,6 +331,10 @@ function buildRevenueSearchQueries(
     "Recife",
     "Fortaleza",
     "Salvador",
+    "Campinas",
+    "Ribeirão Preto",
+    "Joinville",
+    "Londrina",
   ];
   const rawOffset = Number(db.getKV("revenue.search_offset") || "0");
   const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
@@ -478,7 +503,7 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
   const query = queries[0] || niche;
   let searchResults: Array<{ title: string; url: string; snippet: string }> = [];
   try {
-    const rawLimit = Math.max(12, Math.min(18, limit * 3));
+    const rawLimit = Math.max(24, Math.min(48, limit * 6));
     const providers: Array<(query: string, limit: number) => Promise<Array<{ title: string; url: string; snippet: string }>>> =
       brazilTarget && !globalTarget
         ? [searchBing, searchBingRss, searchDuckDuckGo]
@@ -486,11 +511,10 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
 
     for (const provider of providers) {
       for (const q of queries) {
-        const found = await provider(q, Math.min(rawLimit, 8));
+        const found = await provider(q, Math.min(12, rawLimit));
         searchResults.push(...found);
-        if (searchResults.length >= rawLimit) break;
       }
-      if (searchResults.length >= rawLimit) break;
+      if (searchResults.length >= rawLimit * 2) break;
     }
 
     const seen = new Set<string>();
@@ -546,14 +570,18 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
       if (/^(youtube\.com|youtu\.be|instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org|seattlemet\.com|theinfatuation\.com|jeopardylabs\.com)$/i.test(host)) continue;
       if (isLikelyNonCommercialProspect(result.title, result.snippet, result.url)) continue;
       if (isLikelyEditorialResult(result.title, result.snippet)) continue;
+      if (isPlaceholderProspect(result.title, result.snippet, result.url)) continue;
       const id = ensureLead(db, { name: result.title || host, website: result.url, source: "public-search", query, location, snippet: result.snippet });
       candidateIds.push(id);
     } catch {}
   }
 
   let researched = 0;
+  let researchAttempts = 0;
+  const maxResearchCandidates = Math.max(12, Math.min(36, limit * 6));
   const candidates: Array<{ id: string; score: number; name: string; website: string; reasons: string[] }> = [];
-  for (const id of candidateIds) {
+  for (const id of candidateIds.slice(0, maxResearchCandidates)) {
+    researchAttempts++;
     const row = db.raw.prepare("SELECT id,name,website,snippet FROM revenue_leads WHERE id=?").get(id) as { id: string; name: string; website: string | null; snippet: string | null } | undefined;
     if (!row?.website) continue;
     try {
@@ -573,7 +601,8 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
         page.status >= 400 ||
         page.text.trim().length < 120 ||
         isLikelyEditorialResult(page.title, page.text.slice(0, 3000)) ||
-        isLikelyNonCommercialProspect(page.title, page.text, page.url)
+        isLikelyNonCommercialProspect(page.title, page.text, page.url) ||
+        isPlaceholderProspect(page.title, page.text.slice(0, 3000), page.url)
       ) {
         db.raw.prepare("UPDATE revenue_leads SET status=?,updated_at=? WHERE id=?").run("rejected", now(), id);
         continue;
@@ -603,7 +632,7 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
     siteAnalysis: string;
   } | null = null;
   const blockedByActiveOffer: string[] = [];
-  for (const candidate of candidates.slice(0, 3)) {
+  for (const candidate of candidates.slice(0, Math.min(candidates.length, Math.max(8, limit * 2)))) {
     const activeOffer = db.raw.prepare(
       "SELECT id,status FROM revenue_offers WHERE lead_id=? AND status NOT IN ('cancelled','failed') ORDER BY created_at DESC LIMIT 1",
     ).get(candidate.id) as { id: string; status: string } | undefined;
@@ -687,6 +716,7 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
       "REVENUE CYCLE COMPLETE",
       "Prospects discovered: " + searchResults.length,
       "Prospects researched: " + researched,
+      "Research attempts: " + researchAttempts,
       "Qualified candidates: " + (candidates.length ? candidates.map((item) => item.name + " [" + item.score + "]").join("; ") : "none"),
       "Blocked by existing offers: " + (blockedByActiveOffer.length ? blockedByActiveOffer.join("; ") : "none"),
       "No new prospect was selected because every researched candidate was rejected, low-opportunity, or already had an active offer.",
