@@ -1226,38 +1226,87 @@ export function buildFinalSite(lead: any): {
     : email
       ? "mailto:" + email
       : "#contato";
+  const corpus = [name, opportunity, String(lead.business_type || ""), String(lead.services || "")].join(" ").toLowerCase();
+  const has = (words: string[]) => words.some((word) => corpus.includes(word));
+  const isDelicate = has(["salão","salao","beleza","estética","estetica","spa","cabelo","manicure","pedicure","maquiagem","sobrancelha","lash","noiva","autocuidado","wellness","flor","moda","boutique"]);
+  const isBold = has(["automotivo","lava-rápido","lava rapido","barbearia","oficina","mecânica","mecanica","funilaria","auto elétrica","academia","crossfit","tattoo","segurança","industrial"]);
+  const isPremium = has(["arquitetura","engenharia","imobili","advocacia","advogado","contabilidade","finanças","financeiro","consultoria","joias","odont","clínica","clinica","fisioterapia"]);
+  const profile = isDelicate ? "delicate" : isBold ? "bold" : isPremium ? "premium" : "modern";
+  const accent = isDelicate ? "#c98598" : isBold ? "#ff6b3d" : isPremium ? "#c4a56c" : "#8bb6ff";
+  const bg = isDelicate ? "#f7f1ee" : isBold ? "#08090b" : isPremium ? "#10100f" : "#07090d";
+  const text = isDelicate ? "#2b2427" : "#f4f7fb";
+  const muted = isDelicate ? "#75696e" : "#9aa7b7";
+  const panel = isDelicate ? "rgba(255,255,255,.76)" : "rgba(16,21,30,.80)";
+  const displayFont = isDelicate || isPremium ? "Georgia, 'Times New Roman', serif" : "Inter, ui-sans-serif, system-ui, sans-serif";
+  const title = isDelicate
+    ? "Sua beleza merece uma experiência à altura."
+    : isBold
+      ? "Uma presença que impõe respeito antes do primeiro contato."
+      : isPremium
+        ? "Credibilidade também se projeta."
+        : "Uma experiência digital feita para transformar atenção em negócio.";
+  const subtitle = isDelicate
+    ? "Um espaço pensado para realçar sua essência, com cuidado nos detalhes e uma presença digital tão elegante quanto a experiência no salão."
+    : isBold
+      ? "Visual direto, energia forte e caminhos claros para transformar interesse em orçamento, agenda ou venda."
+      : isPremium
+        ? "Uma experiência digital mais silenciosa, elegante e precisa — feita para posicionar valor antes de falar de preço."
+        : opportunity;
+  const serviceList = (() => {
+    try {
+      const parsed = Array.isArray(lead.services) ? lead.services : JSON.parse(String(lead.services || "[]"));
+      if (Array.isArray(parsed) && parsed.length) return parsed.map((x) => String(x)).filter(Boolean).slice(0,4);
+    } catch {}
+    if (isDelicate) return ["Corte & finalização","Coloração","Manicure & pedicure","Beleza e autocuidado"];
+    if (isBold) return ["Serviços principais","Experiência premium","Atendimento sob medida","Orçamentos rápidos"];
+    if (isPremium) return ["Consultoria especializada","Atendimento personalizado","Soluções sob medida","Relacionamento"];
+    return ["Serviço principal","Soluções","Atendimento","Contato"];
+  })();
+  const serviceCards = serviceList.map((service, i) =>
+    "<article class='service-card'><span class='service-index'>0" + String(i + 1) + "</span><h3>" + escHtml(service) + "</h3><p>" +
+    (isDelicate ? "Detalhes, benefícios e imagens organizados para valorizar a experiência." : "Benefício, contexto e próximo passo apresentados sem fricção.") +
+    "</p></article>"
+  ).join("");
 
   const html =
-    "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'>" +
-    "<meta name='viewport' content='width=device-width,initial-scale=1'>" +
-    "<title>" + escHtml(name) + " — Site</title><link rel='stylesheet' href='style.css'></head>" +
-    "<body><div class='scene' aria-hidden='true'><div class='orb orb-a'></div><div class='orb orb-b'></div><div class='grid3d'></div></div><header><div><span class='eyebrow'>PRESENÇA DIGITAL</span><strong>" +
-    escHtml(name) +
-    "</strong></div><a class='top-cta' href='" +
-    escAttr(cta) +
-    "'>Falar agora</a></header>" +
-    "<main><section class='hero reveal'><div><span class='eyebrow'>A SUA MARCA, ONLINE</span>" +
-    "<h1>Uma experiência digital feita para transformar atenção em negócio.</h1><p>" +
-    escHtml(opportunity) +
-    "</p><a class='cta' href='" +
-    escAttr(cta) +
-    "'>Entrar em contato</a></div></section>" +
-    "<section class='cards'><article><b>Apresentação</b><p>Oferta, diferenciais e proposta de valor organizados para facilitar a decisão.</p></article>" +
-    "<article><b>Conversão</b><p>Chamadas para ação claras para aproximar o visitante do próximo passo.</p></article>" +
-    "<article><b>Responsivo</b><p>Uma base rápida e adaptada a celular, tablet e desktop.</p></article></section>" +
-    "<section class='contact' id='contato'><span class='eyebrow'>CONTATO</span><h2>Vamos conversar.</h2><p>O conteúdo final da marca pode ser personalizado nesta base.</p>" +
-    "<a class='cta' href='" +
-    escAttr(cta) +
-    "'>Solicitar atendimento</a></section></main>" +
-    "<script src='script.js'></script></body></html>";
+    "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>" +
+    "<meta name='theme-color' content='" + bg + "'><meta name='description' content='" + escAttr(opportunity) + "'>" +
+    "<title>" + escHtml(name) + " — experiência digital</title><link rel='stylesheet' href='style.css'></head>" +
+    "<body class='profile-" + profile + "'>" +
+    "<div class='scene' aria-hidden='true'><div class='orb orb-a'></div><div class='orb orb-b'></div><div class='ribbon ribbon-a'></div><div class='ribbon ribbon-b'></div></div>" +
+    "<header><div class='brand'><span>" + (isDelicate ? "BELEZA · AUTOCUIDADO · EXPERIÊNCIA" : isBold ? "PERFORMANCE · PRESENÇA · RESULTADO" : isPremium ? "PRECISÃO · CONFIANÇA · EXCELÊNCIA" : "PRESENÇA · CLAREZA · CONVERSÃO") + "</span><strong>" + escHtml(name) + "</strong></div>" +
+    "<a class='top-cta' href='" + escAttr(cta) + "'>" + (isDelicate ? "Agendar horário" : "Falar agora") + "</a></header>" +
+    "<main><section class='hero reveal'><div class='hero-copy'><span class='eyebrow'>" +
+    (isDelicate ? "UMA EXPERIÊNCIA MAIS DELICADA, FEMININA E CONTEMPORÂNEA" : isBold ? "UMA EXPERIÊNCIA DE ALTO IMPACTO" : isPremium ? "UMA EXPERIÊNCIA MAIS REFINADA" : "A SUA MARCA, ONLINE") +
+    "</span><h1>" + escHtml(title) + "</h1><p>" + escHtml(subtitle) + "</p>" +
+    "<div class='actions'><a class='cta' href='" + escAttr(cta) + "'>" + (isDelicate ? "Quero conhecer" : "Entrar em contato") + "</a><a class='ghost' href='" + escAttr(cta) + "'>" + (isDelicate ? "Falar pelo WhatsApp" : "Falar com a equipe") + "</a></div>" +
+    "<div class='trust'><span></span><small>O design muda conforme a personalidade do negócio.</small></div></div>" +
+    "<div class='hero-art' aria-hidden='true'><div class='art-ring'></div><div class='art-core'></div><div class='art-label'>" +
+    (isDelicate ? "SOFT LUXURY" : isBold ? "HIGH IMPACT" : isPremium ? "EDITORIAL" : "MODERN") + "<small>3D · MOVIMENTO · IDENTIDADE</small></div></div></section>" +
+    "<section class='intro reveal'><span class='eyebrow'>" + (isDelicate ? "UM OLHAR MAIS HUMANO" : "UMA PRESENÇA COM PROPÓSITO") + "</span><h2>" +
+    (isDelicate ? "Delicadeza também pode ter personalidade." : isBold ? "Impacto sem perder clareza." : isPremium ? "Sofisticação sem excesso." : "Tecnologia sem cara de template.") +
+    "</h2><p>" + escHtml(opportunity) + "</p></section>" +
+    "<section class='services reveal'><div class='section-head'><div><span class='eyebrow'>SERVIÇOS</span><h2>O que você procura, apresentado do jeito certo.</h2></div></div><div class='service-grid'>" + serviceCards + "</div></section>" +
+    "<section class='experience reveal'><div class='section-head'><div><span class='eyebrow'>DIREÇÃO VISUAL</span><h2>" +
+    (isDelicate ? "Texturas suaves, movimento orgânico e espaço para a imagem da marca respirar." : isBold ? "Contraste, ritmo e movimento para transmitir energia." : isPremium ? "Tipografia, respiro e materiais visuais para transmitir valor." : "3D, movimento e hierarquia para tirar a marca do lugar-comum.") +
+    "</h2></div></div><div class='feature-grid'><article><b>01</b><span>Personalidade</span><p>O visual acompanha o que a empresa quer transmitir.</p></article><article><b>02</b><span>Experiência</span><p>Microinterações e movimento usados com intenção.</p></article><article><b>03</b><span>Conversão</span><p>O próximo passo aparece sem poluir a navegação.</p></article></div></section>" +
+    "<section class='contact reveal' id='contato'><span class='eyebrow'>" + (isDelicate ? "SEU MOMENTO" : "PRÓXIMO PASSO") + "</span><h2>" +
+    (isDelicate ? "Vamos criar um espaço digital tão especial quanto a experiência no salão." : "Vamos criar uma experiência que tenha a cara da sua marca.") +
+    "</h2><p>Conte o que você procura e a equipe cuida do resto.</p><a class='cta' href='" + escAttr(cta) + "'>" + (isDelicate ? "Agendar atendimento" : "Solicitar atendimento") + "</a></section></main><script src='script.js'></script></body></html>";
 
   const css =
-    ":root{--bg:#050505;--panel:#101010;--text:#f7f6f2;--muted:#a8a59c;--line:#242424;--accent:#f4c64f}" +
-    "*{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 80% 0%,#2a2307 0%,transparent 58%),var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,sans-serif}" +
-    "header{height:72px;padding:0 7vw;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);position:sticky;top:0;background:#070707ee;backdrop-filter:blur(14px);z-index:5}" +
-    "header strong{display:block;font-size:18px}.eyebrow{font-size:9px;letter-spacing:.18em;font-weight:800;color:var(--accent);display:block;margin-bottom:6px}.top-cta,.cta{display:inline-flex;text-decoration:none;background:var(--accent);color:#0b0b0b;border-radius:999px;padding:12px 16px;font-weight:850}" +
-    "main{max-width:1120px;margin:0 auto;padding:0 7vw 90px}.hero{min-height:650px;display:flex;align-items:center}.hero h1{font-size:clamp(50px,8vw,92px);line-height:.92;letter-spacing:-.05em;max-width:850px;margin:10px 0 22px}.hero p{color:var(--muted);font-size:18px;line-height:1.65;max-width:640px;margin-bottom:28px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.cards article,.contact{background:linear-gradient(180deg,#121212,#0b0b0b);border:1px solid var(--line);border-radius:23px;padding:28px}.cards p,.contact p{color:var(--muted);line-height:1.65}.contact{margin-top:15px;padding:38px}.contact h2{font-size:clamp(34px,5vw,58px);margin:0 0 12px;letter-spacing:-.04em}.scene{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:-1;perspective:900px}.grid3d{position:absolute;width:90vw;height:90vw;left:50%;top:28%;transform:translate(-50%,-50%) rotateX(64deg);background:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(circle,black,transparent 68%);animation:gridFloat 14s ease-in-out infinite}.orb{position:absolute;border-radius:50%;transform:translate(var(--mx,0),var(--my,0));transition:transform .25s ease-out}.orb-a{width:260px;height:260px;right:4%;top:10%;background:radial-gradient(circle at 35% 30%,#fff9 0 3%,var(--accent) 10%,transparent 62%);filter:blur(2px);animation:orbA 8s ease-in-out infinite}.orb-b{width:180px;height:180px;left:2%;bottom:8%;background:radial-gradient(circle,#ffffff33,transparent 68%);animation:orbB 10s ease-in-out infinite}.reveal{opacity:0;transform:translateY(24px);transition:opacity .8s ease,transform .8s ease}.reveal.visible{opacity:1;transform:none}.cards article,.diag{transition:transform .35s ease,box-shadow .35s ease}.cards article:hover,.diag:hover{transform:translateY(-8px) rotateX(2deg) rotateY(-2deg);box-shadow:0 24px 60px #0008}@keyframes orbA{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(-35px,25px,0) scale(1.08)}}@keyframes orbB{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(25px,-35px,0)}}@keyframes gridFloat{0%,100%{transform:translate(-50%,-50%) rotateX(64deg)}50%{transform:translate(-50%,-50%) rotateX(64deg) translateY(22px)}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}}" +
-    "@media(max-width:780px){header{padding:0 18px}.hero{min-height:620px}.cards{grid-template-columns:1fr}main{padding-left:18px;padding-right:18px}}";
+    ":root{--bg:" + bg + ";--panel:" + panel + ";--text:" + text + ";--muted:" + muted + ";--line:" + (isDelicate ? "rgba(70,50,58,.12)" : "rgba(255,255,255,.11)") + ";--accent:" + accent + ";--display:" + displayFont + "}" +
+    "*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;overflow-x:hidden;background:" +
+    (isDelicate
+      ? "radial-gradient(700px 480px at 84% 8%,rgba(201,133,152,.22),transparent 64%),radial-gradient(650px 500px at 2% 66%,rgba(243,216,220,.42),transparent 60%),var(--bg)"
+      : "radial-gradient(900px 520px at 90% -10%,color-mix(in srgb,var(--accent) 20%,transparent),transparent 62%),var(--bg)") +
+    ";color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,sans-serif}" +
+    "header{height:82px;padding:0 6vw;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(18px)}.brand span{display:block;font-size:8px;letter-spacing:.18em;font-weight:900;color:var(--accent);margin-bottom:6px}.brand strong{display:block;font-size:18px;letter-spacing:-.02em}.top-cta,.cta{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;background:var(--accent);color:" + (isDelicate ? "#3b252b" : "#080808") + ";padding:13px 18px;border-radius:999px;font-weight:850;box-shadow:0 16px 40px rgba(0,0,0,.12);transition:transform .3s ease}.top-cta:hover,.cta:hover{transform:translateY(-3px)}" +
+    "main{max-width:1220px;margin:0 auto;padding:0 6vw 100px}.scene{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:-1;perspective:1200px}.orb{position:absolute;border-radius:50%;filter:blur(10px);opacity:.38}.orb-a{width:420px;height:420px;right:-120px;top:120px;background:radial-gradient(circle,var(--accent),transparent 68%);animation:floatOrb 9s ease-in-out infinite}.orb-b{width:280px;height:280px;left:-110px;bottom:90px;background:radial-gradient(circle,#fff,transparent 70%);opacity:" + (isDelicate ? ".20" : ".08") + ";animation:floatOrbB 11s ease-in-out infinite}.ribbon{position:absolute;border-radius:48% 52% 43% 57%;transform-style:preserve-3d;opacity:0}.profile-delicate .ribbon{opacity:1;border:1px solid rgba(255,255,255,.3)}.ribbon-a{width:560px;height:230px;right:-100px;top:180px;background:linear-gradient(120deg,transparent 4%,rgba(255,255,255,.32) 25%,rgba(201,133,152,.72) 46%,rgba(243,216,220,.28) 72%,transparent 92%);box-shadow:0 40px 120px rgba(201,133,152,.28);transform:rotate(-18deg) rotateX(62deg);animation:flowA 11s ease-in-out infinite}.ribbon-b{width:460px;height:190px;left:-120px;bottom:140px;background:linear-gradient(120deg,transparent,rgba(201,133,152,.22),rgba(255,255,255,.18),transparent);transform:rotate(15deg) rotateX(62deg);animation:flowB 13s ease-in-out infinite}" +
+    ".hero{min-height:780px;display:grid;grid-template-columns:1.13fr .87fr;gap:5vw;align-items:center}.hero-copy{max-width:800px}.eyebrow{display:block;color:var(--accent);font-size:9px;font-weight:900;letter-spacing:.18em}.hero h1{font-family:var(--display);font-size:clamp(56px,8vw,104px);line-height:.93;letter-spacing:-.055em;margin:14px 0 24px;font-weight:700}.profile-delicate .hero h1{font-size:clamp(56px,7.2vw,96px);font-weight:500;letter-spacing:-.045em}.hero p{font-size:18px;line-height:1.72;color:var(--muted);max-width:680px}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px}.ghost{display:inline-flex;align-items:center;text-decoration:none;border:1px solid var(--line);background:color-mix(in srgb,var(--panel) 82%,transparent);color:var(--text);padding:13px 18px;border-radius:999px;font-weight:760;backdrop-filter:blur(16px)}.trust{display:flex;align-items:center;gap:10px;margin-top:24px;color:var(--muted)}.trust span{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px var(--accent)}.trust small{font-size:10px}" +
+    ".hero-art{min-height:500px;position:relative;border:1px solid var(--line);background:var(--panel);border-radius:" + (isDelicate ? "44px" : "28px") + ";backdrop-filter:blur(18px);box-shadow:0 38px 100px rgba(0,0,0,.12);overflow:hidden;transform:rotate(3deg);transition:transform .6s ease}.hero-art:hover{transform:rotate(0deg) translateY(-6px)}.art-ring{position:absolute;inset:18%;border:1px solid color-mix(in srgb,var(--accent) 62%,transparent);border-radius:50% " + (isDelicate ? "42%" : "50%") + ";transform:rotateX(66deg);animation:spin 14s linear infinite}.art-core{position:absolute;inset:30%;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff 0 3%,var(--accent) 14%,transparent 68%);box-shadow:0 0 110px color-mix(in srgb,var(--accent) 38%,transparent);animation:pulse 5s ease-in-out infinite}.art-label{position:absolute;left:28px;bottom:24px;color:var(--accent);font-size:10px;font-weight:900;letter-spacing:.16em}.art-label small{display:block;margin-top:7px;font-size:8px;color:var(--muted);letter-spacing:.12em}" +
+    ".intro{padding:50px 0 110px;max-width:900px}.intro h2,.section-head h2,.contact h2{font-family:var(--display);font-weight:600;line-height:.98;letter-spacing:-.045em}.intro h2{font-size:clamp(38px,6vw,72px);margin:14px 0}.intro p{font-size:17px;line-height:1.75;color:var(--muted);max-width:760px}.section-head{margin-bottom:24px}.section-head h2{font-size:clamp(36px,5.7vw,68px);margin:12px 0}.service-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.service-card{min-height:230px;padding:26px;border:1px solid var(--line);border-radius:" + (isDelicate ? "28px" : "20px") + ";background:var(--panel);backdrop-filter:blur(16px);transition:transform .45s ease,box-shadow .45s ease}.service-card:hover{transform:translateY(-10px);box-shadow:0 30px 70px rgba(0,0,0,.14)}.service-index{font-size:9px;letter-spacing:.16em;font-weight:900;color:var(--accent)}.service-card h3{font-family:var(--display);font-size:27px;line-height:1.05;margin:18px 0 10px}.service-card p{font-size:13px;line-height:1.65;color:var(--muted)}.experience{padding:100px 0}.feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.feature-grid article{min-height:190px;padding:26px;border:1px solid var(--line);border-radius:" + (isDelicate ? "26px" : "18px") + ";background:var(--panel)}.feature-grid b{display:block;color:var(--accent);font-size:10px;letter-spacing:.18em}.feature-grid span{display:block;font-family:var(--display);font-size:26px;margin:16px 0 9px}.feature-grid p{margin:0;color:var(--muted);line-height:1.65;font-size:13px}.contact{margin-top:30px;padding:52px;border:1px solid var(--line);background:var(--panel);border-radius:" + (isDelicate ? "34px" : "24px") + ";backdrop-filter:blur(18px);position:relative;overflow:hidden}.contact:after{content:'';position:absolute;right:-80px;bottom:-120px;width:360px;height:360px;border-radius:50%;background:radial-gradient(circle,var(--accent),transparent 68%);opacity:.15;filter:blur(20px)}.contact h2{position:relative;z-index:2;font-size:clamp(42px,6vw,78px);max-width:920px;margin:10px 0 15px}.contact p,.contact .cta{position:relative;z-index:2}.contact p{color:var(--muted);font-size:16px;line-height:1.7}" +
+    ".reveal{opacity:0;transform:translateY(28px);transition:opacity .85s ease,transform .85s ease}.reveal.visible{opacity:1;transform:none}@keyframes floatOrb{50%{transform:translate3d(-30px,24px,40px) scale(1.06)}}@keyframes floatOrbB{50%{transform:translate3d(24px,-34px,-20px)}}@keyframes flowA{50%{transform:translate3d(-35px,24px,45px) rotate(-11deg) rotateX(56deg)}}@keyframes flowB{50%{transform:translate3d(42px,-20px,-20px) rotate(22deg) rotateX(58deg)}}@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{50%{transform:scale(1.12)}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}}@media(max-width:860px){header{padding:0 18px}.hero{grid-template-columns:1fr;min-height:0;padding-top:50px;gap:32px}.hero-art{min-height:340px;order:-1}.service-grid{grid-template-columns:1fr 1fr}.feature-grid{grid-template-columns:1fr}.intro{padding-bottom:70px}.experience{padding:70px 0}main{padding-left:18px;padding-right:18px}}@media(max-width:560px){header{height:76px}.brand span{display:none}.top-cta{font-size:11px;padding:11px 13px}.hero h1{font-size:clamp(48px,14vw,74px)}.profile-delicate .hero h1{font-size:clamp(48px,14vw,72px)}.hero p{font-size:16px}.actions{flex-direction:column;align-items:stretch}.actions .cta,.actions .ghost{justify-content:center}.hero-art{min-height:300px;border-radius:28px}.service-grid{grid-template-columns:1fr}.feature-grid article{min-height:160px}.contact{padding:32px 24px}}";
 
   return {
     files: [
