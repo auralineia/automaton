@@ -97,8 +97,8 @@ export async function handleRevenueRequest(
       const css = built.files.find((item) => item.path === "style.css")?.content || "";
       const js = built.files.find((item) => item.path === "script.js")?.content || "";
       const inline = file.content
-        .replace(/<link rel='stylesheet' href='style\.css'>/i, "<style>" + css + "</style>")
-        .replace(/<script src='script\.js'><\/script>/i, "<script>" + js + "</script>");
+        .replace(/<link rel='stylesheet' href='style\.css(?:\?[^']*)?'>/i, "<style>" + css + "</style>")
+        .replace(/<script src='script\.js(?:\?[^']*)?'><\/script>/i, "<script>" + js + "</script>");
       res.end(inline);
     } else {
       res.end(file.content);
