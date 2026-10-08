@@ -261,8 +261,70 @@ async function searchBingRss(query: string, limit = 8): Promise<Array<{ title: s
 }
 
 function isLikelyEditorialResult(title: string, snippet: string): boolean {
-  const lower = (title + " " + snippet).toLowerCase();
-  return /\b(ranking|rankings|lista das|lista de|maiores|melhores|top \d+|guia de|comparativo|como escolher|o que é|notícias|noticia|blog)\b/i.test(lower);
+  const titleLower = String(title || "").toLowerCase().trim();
+  const snippetLower = String(snippet || "").toLowerCase().trim();
+  const editorialTitle =
+    /\b(ranking|rankings|lista das|lista de|maiores|melhores|top \d+|guia de|comparativo|notícias|noticia|notícias|o que é)\b/i.test(titleLower) ||
+    /^(como escolher|o que é|guia|ranking|lista)\b/i.test(titleLower);
+  if (editorialTitle) return true;
+  if (!snippetLower) return false;
+  return /\b(ranking|lista das|lista de|maiores|melhores|top \d+|guia de|comparativo|notícias|noticia|notícias)\b/i.test(snippetLower);
+}
+
+function buildRevenueSearchQueries(
+  db: AutomatonDatabase,
+  niche: string,
+  location: string,
+): string[] {
+  const normalizedLocation = location.toLowerCase();
+  const brazilTarget = /(^|\b)(brasil|brazil|br|são paulo|sao paulo|rio de janeiro|brasília|brasilia|goiânia|goiania|belo horizonte|curitiba|recife|fortaleza|salvador|porto alegre)(\b|$)/i.test(location);
+  const globalTarget = /(^|\b)(global|world|worldwide|mundo|international|internacional)(\b|$)/i.test(normalizedLocation);
+
+  if (!brazilTarget || globalTarget) {
+    const base = niche.trim();
+    return [
+      `"${base}" "contact" "services" -ranking -list -news -blog`,
+      `"${base}" "WhatsApp" "contact" -ranking -list -news -blog`,
+      `"${base}" "quote" "contact" -ranking -list -news -blog`,
+    ];
+  }
+
+  const seeds = [
+    "estética automotiva",
+    "barbearia",
+    "salão de beleza",
+    "clínica de estética",
+    "oficina mecânica",
+    "pet shop",
+    "marmoraria",
+    "contabilidade",
+    "vidraçaria",
+    "empresa de ar condicionado",
+  ];
+  const cities = [
+    "São Paulo",
+    "Brasília",
+    "Goiânia",
+    "Belo Horizonte",
+    "Curitiba",
+    "Recife",
+    "Fortaleza",
+    "Salvador",
+  ];
+  const rawOffset = Number(db.getKV("revenue.search_offset") || "0");
+  const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+  const chosenSeeds = Array.from({ length: 4 }, (_, i) => seeds[(offset + i) % seeds.length]);
+  const chosenCities = Array.from({ length: 2 }, (_, i) => cities[(offset + i) % cities.length]);
+  db.setKV("revenue.search_offset", String((offset + 4) % seeds.length));
+
+  const queries: string[] = [];
+  for (const seed of chosenSeeds) {
+    for (const city of chosenCities) {
+      queries.push(`site:.com.br "${seed}" "${city}" "WhatsApp" "contato" -noticias -blog -ranking -lista -vagas`);
+      queries.push(`site:.com.br "${seed}" "${city}" "orçamento" "serviços" -noticias -blog -ranking -lista`);
+    }
+  }
+  return queries.slice(0, 12);
 }
 
 function cleanupRejectedRevenueLeads(db: AutomatonDatabase): void {
@@ -409,51 +471,39 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
       ? requestedPriceCents
       : DEFAULT_PRICE_CENTS;
   const normalizedLocation = location.toLowerCase();
-  const brazilTarget = /(^|\\b)(brasil|brazil|br|são paulo|sao paulo|rio de janeiro|brasília|brasilia)(\\b|$)/i.test(location);
+  const brazilTarget = /(^|\\b)(brasil|brazil|br|são paulo|sao paulo|rio de janeiro|brasília|brasilia|goiânia|goiania|belo horizonte|curitiba|recife|fortaleza|salvador|porto alegre)(\\b|$)/i.test(location);
   const globalTarget = /(^|\\b)(global|world|worldwide|mundo|international|internacional)(\\b|$)/i.test(normalizedLocation);
   const domainHint = brazilTarget && !globalTarget ? "site:.com.br " : "";
-  const locationPhrase = globalTarget ? "" : " " + location;
-  const baseQuery = domainHint + niche + locationPhrase + " -ranking -lista -melhores -maiores -top -wikipedia";
-  const query = baseQuery.trim();
+  const queries = buildRevenueSearchQueries(db, niche, location).map((q) => q.replace(/^site:\.com\.br\\s*/, domainHint));
   let searchResults: Array<{ title: string; url: string; snippet: string }> = [];
   try {
-    const queries = [
-      query,
-      (domainHint + niche + locationPhrase + " contato").trim(),
-      (domainHint + niche + locationPhrase + " orçamento").trim(),
-    ].filter((value, index, all) => value && all.indexOf(value) === index);
+    const rawLimit = Math.max(12, Math.min(18, limit * 3));
+    const providers: Array<(query: string, limit: number) => Promise<Array<{ title: string; url: string; snippet: string }>>> =
+      brazilTarget && !globalTarget
+        ? [searchBing, searchBingRss, searchDuckDuckGo]
+        : [searchDuckDuckGo, searchBing, searchBingRss];
 
-    for (const q of queries) {
-      const found = await searchDuckDuckGo(q, Math.min(limit, 6));
-      searchResults.push(...found);
-      if (searchResults.length >= limit) break;
-    }
-    if (searchResults.length < limit) {
+    for (const provider of providers) {
       for (const q of queries) {
-        const found = await searchBing(q, Math.min(limit, 8));
+        const found = await provider(q, Math.min(rawLimit, 8));
         searchResults.push(...found);
-        if (searchResults.length >= limit) break;
+        if (searchResults.length >= rawLimit) break;
       }
-    }
-    if (searchResults.length < limit) {
-      for (const q of queries) {
-        const found = await searchBingRss(q, Math.min(limit, 8));
-        searchResults.push(...found);
-        if (searchResults.length >= limit) break;
-      }
+      if (searchResults.length >= rawLimit) break;
     }
 
     const seen = new Set<string>();
     searchResults = searchResults.filter((item) => {
       try {
-        const canonical = new URL(item.url).origin.toLowerCase();
-        if (seen.has(canonical)) return false;
-        seen.add(canonical);
+        const parsed = new URL(item.url);
+        const host = parsed.hostname.toLowerCase().replace(/^www\\./, "");
+        if (!host.includes(".") || seen.has(host)) return false;
+        seen.add(host);
         return true;
       } catch {
         return false;
       }
-    }).slice(0, limit);
+    });
   } catch (error) {
     return "Revenue engine could not search public web: " + (error instanceof Error ? error.message : String(error));
   }
