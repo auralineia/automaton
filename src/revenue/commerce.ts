@@ -1223,8 +1223,8 @@ export function buildFinalSite(lead: any): {
   const corpus = [name, opportunity, String(lead.business_type || ""), String(lead.services || "")].join(" ").toLowerCase();
   const has = (words: string[]) => words.some((word) => corpus.includes(word));
   const isClinic = has(["clínica","clinica","estética avançada","estetica avancada","dermatologia","harmonização","harmonizacao","botox","toxina","bioestimulador","laser facial","laser","skin","pele","procedimentos faciais","contorno corporal","medicina estética","medicina estetica"]);
-  const isDelicate = !isClinic && has(["salão","salao","beleza","estética","estetica","spa","cabelo","manicure","pedicure","maquiagem","sobrancelha","lash","noiva","autocuidado","wellness","flor","boutique","moda"]);
   const isBold = !isClinic && has(["automotivo","lava-rápido","lava rapido","barbearia","oficina","mecânica","mecanica","funilaria","auto elétrica","academia","crossfit","tattoo","industrial","motors"]);
+  const isDelicate = !isClinic && !isBold && has(["salão","salao","beleza","estética","estetica","spa","cabelo","manicure","pedicure","maquiagem","sobrancelha","lash","noiva","autocuidado","wellness","flor","boutique","moda"]);
   const isPremium = !isClinic && !isDelicate && !isBold && has(["arquitetura","engenharia","imobili","advocacia","advogado","contabilidade","finanças","financeiro","consultoria","joias","odont","clínica","clinica","fisioterapia"]);
   const isSensory = !isClinic && !isDelicate && !isBold && has(["restaurante","pizzaria","café","cafe","gastronomia","hotel","bar","vinho","chef"]);
   const profile = isClinic ? "clinic" : isDelicate ? "delicate" : isBold ? "bold" : isPremium ? "premium" : isSensory ? "sensory" : "modern";
