@@ -8,10 +8,10 @@ import type { AutomatonDatabase } from "../types.js";
 import { createWork, executeWorkBundle } from "../orchestration/work-engine.js";
 
 const REVENUE_ROOT = process.env.RITTY_REVENUE_ROOT || "/root/.automaton/revenue";
-const DEFAULT_PRICE_CENTS = Math.max(
-  50000,
-  Number(process.env.RITTY_OFFER_PRICE_CENTS || "150000"),
-);
+const DEFAULT_PRICE_CENTS = (() => {
+  const requested = Number(process.env.RITTY_OFFER_PRICE_CENTS || "39700");
+  return Math.min(50000, Math.max(20000, Number.isFinite(requested) ? requested : 39700));
+})();
 
 function now(): string {
   return new Date().toISOString();
@@ -688,6 +688,9 @@ export async function prepareOutreach(
     "",
     "Se fizer sentido, eu adapto a demonstração para a identidade e os serviços reais da empresa e envio o escopo fechado.",
     "",
+    "Investimento para esta condição inicial: R$ 397,00.",
+    "A versão final é personalizada e publicada após a confirmação do pagamento.",
+    "",
     "RITTY — Revenue Engine",
     args.customContext ? String(args.customContext).slice(0, 1200) : "",
   ].filter(Boolean).join("\n");
@@ -722,7 +725,7 @@ export async function prepareOutreach(
 export function approveOutreach(db: AutomatonDatabase, actionId: string): string {
   ensureRevenueCommerceSchema(db);
   const action = db.raw
-    .prepare("SELECT * FROM revenue_actions WHERE id=? AND action='send_outreach'")
+    .prepare("SELECT * FROM revenue_actions WHERE id=? AND action IN ('send_outreach','follow_up')")
     .get(actionId) as any;
   if (!action) return "Outreach action not found: " + actionId;
   if (action.status !== "pending_approval") {
@@ -781,7 +784,7 @@ export async function sendApprovedOutreach(
 ): Promise<string> {
   ensureRevenueCommerceSchema(db);
   const action = db.raw
-    .prepare("SELECT * FROM revenue_actions WHERE id=? AND action='send_outreach'")
+    .prepare("SELECT * FROM revenue_actions WHERE id=? AND action IN ('send_outreach','follow_up')")
     .get(actionId) as any;
   if (!action) return "Outreach action not found: " + actionId;
   if (action.status !== "approved") {
@@ -849,9 +852,36 @@ export function recordLeadResponse(
   if (args.stage === "replied") {
     const existing = db.raw.prepare("SELECT id FROM revenue_actions WHERE lead_id=? AND action='follow_up' AND status IN ('pending_approval','approved') ORDER BY created_at DESC LIMIT 1").get(lead.id) as any;
     if (!existing) {
+      const lastMessage = db.raw.prepare(
+        "SELECT subject,channel FROM revenue_messages WHERE lead_id=? AND status='sent' ORDER BY created_at DESC LIMIT 1",
+      ).get(lead.id) as any;
+      const channel = lastMessage?.channel === "email" ? "email" : "manual";
+      const subject = lastMessage?.subject ? "Re: " + String(lastMessage.subject).replace(/^Re:\s*/i, "") : "Re: uma melhoria concreta para " + lead.name;
+      const previewUrl = String(
+        db.raw.prepare("SELECT preview_url FROM revenue_offers WHERE lead_id=? ORDER BY created_at DESC LIMIT 1").get(lead.id)?.preview_url || "",
+      );
+      const body = [
+        "Olá, time da " + lead.name + ",",
+        "",
+        "Obrigado pela resposta. Vi a mensagem e consigo seguir por aqui.",
+        "",
+        "A demonstração que preparei continua disponível:",
+        previewUrl || lead.website || "",
+        "",
+        "Posso ajustar a proposta para a identidade e os serviços reais de vocês.",
+        "Nesta condição inicial, a entrega completa fica em R$ 397,00.",
+        "",
+        "Se fizer sentido, me diga qual ponto vocês querem priorizar e eu sigo daí.",
+        "",
+        "RITTY — Revenue Engine",
+      ].filter(Boolean).join("\n");
+      const messageId = ulid();
+      db.raw.prepare("INSERT INTO revenue_messages (id,lead_id,channel,destination,subject,body,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)").run(
+        messageId, lead.id, channel, lead.email || lead.contact || lead.contact_url || null, subject, body, "draft", now(), now(),
+      );
       db.raw.prepare("INSERT INTO revenue_actions (id,lead_id,action,status,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run(
         ulid(), lead.id, "follow_up", "pending_approval",
-        JSON.stringify({ reason: "Resposta recebida; revisar intenção do prospect e preparar próximo passo.", response: responseText }),
+        JSON.stringify({ messageId, reason: "Resposta recebida; resposta de continuidade preparada.", response: responseText }),
         now(), now(),
       );
     }
@@ -862,11 +892,19 @@ export function recordLeadResponse(
       ulid(), lead.id, "interest_confirmed", 0, "BRL", 0, "Interesse confirmado.", now(),
     );
 
+    const latestOffer = db.raw.prepare(
+      "SELECT id,price_cents FROM revenue_offers WHERE lead_id=? ORDER BY created_at DESC LIMIT 1",
+    ).get(lead.id) as any;
     const existing = db.raw.prepare("SELECT id,status FROM revenue_actions WHERE lead_id=? AND action='create_checkout' AND status IN ('pending_approval','approved') ORDER BY created_at DESC LIMIT 1").get(lead.id) as any;
     if (!existing) {
       db.raw.prepare("INSERT INTO revenue_actions (id,lead_id,action,status,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run(
         ulid(), lead.id, "create_checkout", "pending_approval",
-        JSON.stringify({ reason: "Interesse confirmado; checkout pronto para aprovação humana.", nextStep: "approve_checkout" }),
+        JSON.stringify({
+          reason: "Interesse confirmado; checkout pronto para aprovação humana.",
+          nextStep: "approve_checkout",
+          offerId: latestOffer?.id || null,
+          amountCents: Math.min(50000, Math.max(20000, Number(latestOffer?.price_cents || DEFAULT_PRICE_CENTS))),
+        }),
         now(), now(),
       );
     }
@@ -931,10 +969,8 @@ export async function createStripeCheckout(
         .prepare("SELECT * FROM revenue_offers WHERE lead_id=? ORDER BY created_at DESC LIMIT 1")
         .get(lead.id) as any);
 
-  const amountCents = Math.max(
-    50000,
-    Math.round(Number(args.amountCents || offer?.price_cents || DEFAULT_PRICE_CENTS)),
-  );
+  const requestedAmount = Math.round(Number(args.amountCents || offer?.price_cents || DEFAULT_PRICE_CENTS));
+  const amountCents = Math.min(50000, Math.max(20000, Number.isFinite(requestedAmount) ? requestedAmount : DEFAULT_PRICE_CENTS));
 
   const params = new URLSearchParams();
   params.set("mode", "payment");
