@@ -1079,6 +1079,15 @@ export async function runAgentLoop(
       }
 
       // Revenue mode gets a deterministic execution path: the sales cycle itself does not
+      // One-time production E2E verification: force one revenue cycle after this
+      // deployment so we can observe the real discovery/qualification output in logs.
+      // The marker prevents this verification from running again on later restarts.
+      if (db.getKV("revenue_deterministic_test_v1") !== "1") {
+        db.deleteKV("autonomy.last_seeded_at");
+        db.setKV("revenue_deterministic_test_v1", "1");
+        logger.info("[REVENUE] One-time production E2E verification armed.");
+      }
+
       // need parent-agent inference or the general goal planner. This prevents the model
       // from drifting into unrelated work_create/create_goal actions while a sales cycle
       // is active. The revenue engine remains approval-gated for external outreach and checkout.
@@ -1113,11 +1122,10 @@ export async function runAgentLoop(
               "UPDATE goals SET status='completed', completed_at=COALESCE(completed_at,?) WHERE id=? AND status='active'",
             ).run(completedAt, activeRevenueGoal.id);
 
-            logger.info("[REVENUE] Deterministic sales cycle executed.", {
-              goalId: activeRevenueGoal.id,
-              priceCents: offerPriceCents,
-              result: String(result).slice(0, 2400),
-            });
+            logger.info(
+              "[REVENUE] Deterministic sales cycle executed. " +
+              String(result).slice(0, 2400).replace(/\n/g, " | "),
+            );
           } catch (error) {
             const failedAt = new Date().toISOString();
             db.raw.prepare(
