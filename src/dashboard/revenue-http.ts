@@ -74,10 +74,12 @@ export async function handleRevenueRequest(
       return true;
     }
     const lead = {
-      name: "Ateliê Bella Guarujá",
-      opportunity: "Salão de beleza feminino premium no Guarujá, com foco em beleza, autocuidado e experiência.",
-      phone: "+5513999999999",
-      email: "contato@ateliebellaguaruja.test",
+      name: "Clínica Áurea BH",
+      opportunity: "Clínica de estética avançada em Belo Horizonte, com foco em naturalidade, protocolos personalizados, cuidado e experiência premium.",
+      phone: "+5531999999999",
+      email: "contato@clinicaaureabh.test",
+      business_type: "clínica de estética avançada",
+      services: JSON.stringify(["Avaliação personalizada","Harmonização facial","Toxina botulínica","Bioestimuladores","Tecnologias para pele","Contorno corporal"]),
     };
     const built = buildFinalSite(lead);
     const requested = url.searchParams.get("file") || "index.html";
