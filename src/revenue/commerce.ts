@@ -548,7 +548,7 @@ function buildDemoSite(lead: any): {
     "<section class='reveal'><div class='section-head'><span class='eyebrow'>ESTRUTURA PROPOSTA</span><h2>Uma experiência pensada para o que " + escHtml(name) + " vende.</h2></div><div class='cards'>" + serviceCards + "</div></section>" +
     "<section class='contact reveal' id='contato'><span class='eyebrow'>PRÓXIMO PASSO</span><h2>O próximo clique pode ser o começo da conversa.</h2>" +
     "<p>Esta é uma demonstração. A versão final pode receber identidade visual, fotos, textos, provas sociais e integrações reais da empresa.</p>" +
-    "<a class='cta' href='" + escAttr(cta) + "'>Solicitar proposta</a></section></main><script src='script.js'></script></body></html>";
+    "<a class='cta' href='" + escAttr(cta) + "'>Solicitar proposta</a></section></main><script src='script.js?v=adaptive-20261008'></script></body></html>";
 
   const css =
     ":root{--bg:#060606;--panel:#101010;--text:#f7f5ee;--muted:#a7a39a;--line:#232323;--accent:" + accent + "}" +
@@ -1271,7 +1271,7 @@ export function buildFinalSite(lead: any): {
   const html =
     "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>" +
     "<meta name='theme-color' content='" + bg + "'><meta name='description' content='" + escAttr(opportunity) + "'>" +
-    "<title>" + escHtml(name) + " — experiência digital</title><link rel='stylesheet' href='style.css'></head>" +
+    "<title>" + escHtml(name) + " — experiência digital</title><link rel='stylesheet' href='style.css?v=adaptive-20261008'></head>" +
     "<body class='profile-" + profile + "'>" +
     "<div class='scene' aria-hidden='true'><div class='orb orb-a'></div><div class='orb orb-b'></div><div class='ribbon ribbon-a'></div><div class='ribbon ribbon-b'></div></div>" +
     "<header><div class='brand'><span>" + (isDelicate ? "BELEZA · AUTOCUIDADO · EXPERIÊNCIA" : isBold ? "PERFORMANCE · PRESENÇA · RESULTADO" : isPremium ? "PRECISÃO · CONFIANÇA · EXCELÊNCIA" : "PRESENÇA · CLAREZA · CONVERSÃO") + "</span><strong>" + escHtml(name) + "</strong></div>" +
