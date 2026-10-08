@@ -1086,12 +1086,12 @@ export async function runAgentLoop(
       // One-time production E2E verification is independent of the orchestrator state so a
       // stale delegated goal cannot swallow the verification before the revenue engine runs.
       if (
-        db.getKV("revenue_deterministic_test_v3") !== "1" &&
+        db.getKV("revenue_deterministic_test_v4") !== "1" &&
         pendingInput?.source !== "creator" &&
         !db.getKV("creator_task_active") &&
         db.raw.prepare("SELECT 1 FROM inbox_messages WHERE status='received' AND from_address='dashboard://creator' LIMIT 1").get() == null
       ) {
-        db.setKV("revenue_deterministic_test_v3", "1");
+        db.setKV("revenue_deterministic_test_v4", "1");
         db.deleteKV("autonomy.last_seeded_at");
         try {
           const { revenueAutopilotCycle } = await import("../revenue/engine.js");
