@@ -5,6 +5,7 @@ import net from "node:net";
 import { ulid } from "ulid";
 import type { AutomatonDatabase } from "../types.js";
 import { enrichLead, prepareOutreach, ensureRevenueCommerceSchema } from "./commerce.js";
+import { createGoal } from "../orchestration/task-graph.js";
 
 const REVENUE_ROOT = process.env.RITTY_REVENUE_ROOT || "/root/.automaton/revenue";
 const DEFAULT_PRICE_CENTS = Number(process.env.RITTY_OFFER_PRICE_CENTS || 39700);
@@ -780,6 +781,48 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
   db.raw.prepare("INSERT INTO revenue_offers (id,lead_id,title,price_cents,status,proposal_path,evidence,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)").run(
     offerId, best.id, `Site profissional / ${best.name}`, priceCents, "draft", proposalPath,
     JSON.stringify({ score: best.score, reasons: best.reasons, researched }), now(), now(),
+  );
+  // Qualified revenue work becomes an actual autonomous RITTY goal.
+  // The revenue engine discovers/qualifies the opportunity; the orchestration
+  // layer owns planning, agent execution, validation, and artifact creation.
+  const autonomousTitle = "Autonomous value-creation cycle — website / " + best.name;
+  const existingGoal = db.raw.prepare(
+    "SELECT id FROM goals WHERE status IN ('active','paused') AND title=? LIMIT 1",
+  ).get(autonomousTitle) as { id: string } | undefined;
+
+  let autonomousGoalId = existingGoal?.id || null;
+  if (!existingGoal) {
+    const autonomousGoal = createGoal(
+      db.raw,
+      autonomousTitle,
+      [
+        "Create a high-quality website deliverable for this qualified revenue opportunity.",
+        "RITTY must perform the work itself through its orchestration/agent execution layer: research, design, implementation, validation, and artifact recording.",
+        "Do not send external outreach, make payments, purchases, paid deployments, transfers, or binding commitments.",
+        "",
+        "Lead: " + best.name,
+        "Website: " + best.website,
+        "Business type: " + best.businessType,
+        "Opportunity: " + (best.opportunity || "Improve the current digital presence and conversion path."),
+        "Services: " + (best.services || "[]"),
+        "Site analysis: " + (best.siteAnalysis || "{}"),
+        "Offer ID: " + offerId,
+        "",
+        "Quality bar: produce a real commercial website, not a dashboard or generic placeholder. Adapt visual direction to the business category. Include deliberate 3D/motion, strong hierarchy, mobile responsiveness, credible copy, and a clear CTA. Validate the result before marking the task complete.",
+      ].join("\n"),
+      "self-directed operation; revenue opportunity; create and validate the website artifact before any external sales action",
+    );
+    autonomousGoalId = autonomousGoal.id;
+  }
+
+  db.raw.prepare("UPDATE revenue_offers SET evidence=? WHERE id=?").run(
+    JSON.stringify({
+      score: best.score,
+      reasons: best.reasons,
+      researched,
+      autonomousGoalId,
+    }),
+    offerId,
   );
   let outreach = "";
   try {
