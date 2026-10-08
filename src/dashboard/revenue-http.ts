@@ -93,7 +93,16 @@ export async function handleRevenueRequest(
       requestedFile.endsWith(".js") ? "text/javascript; charset=utf-8" :
       "text/html; charset=utf-8";
     res.writeHead(200, { "Content-Type": type, "Cache-Control": "no-store" });
-    res.end(file.content);
+    if (requestedFile === "index.html") {
+      const css = built.files.find((item) => item.path === "style.css")?.content || "";
+      const js = built.files.find((item) => item.path === "script.js")?.content || "";
+      const inline = file.content
+        .replace(/<link rel='stylesheet' href='style\.css'>/i, "<style>" + css + "</style>")
+        .replace(/<script src='script\.js'><\/script>/i, "<script>" + js + "</script>");
+      res.end(inline);
+    } else {
+      res.end(file.content);
+    }
     return true;
   }
 
