@@ -79,7 +79,7 @@ export async function handleRevenueRequest(
       phone: "+5531999999999",
       email: "contato@clinicaaureabh.test",
       business_type: "clínica de estética avançada",
-      services: JSON.stringify(["Avaliação personalizada","Harmonização facial","Toxina botulínica","Bioestimuladores","Tecnologias para pele","Contorno corporal"]),
+      services: JSON.stringify(["Avaliação personalizada","Toxina botulínica","Bioestimuladores","Harmonização facial","Tecnologias para pele","Contorno corporal"]),
     };
     const built = buildFinalSite(lead);
     const requested = url.searchParams.get("file") || "index.html";

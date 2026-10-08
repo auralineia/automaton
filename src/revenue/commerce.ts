@@ -558,7 +558,7 @@ function buildDemoSite(lead: any): {
   return {
     files: [
       { path: "index.html", content: html },
-      { path: "style.css", content: css },
+      { path: "style.css", content: finalCss },
       { path: "script.js", content: "document.addEventListener('DOMContentLoaded',function(){document.body.dataset.ready='true';const root=document.documentElement;const io=new IntersectionObserver(es=>es.forEach(e=>e.isIntersecting&&e.target.classList.add('visible')),{threshold:.12});document.querySelectorAll('.reveal').forEach(e=>io.observe(e));window.addEventListener('pointermove',e=>{root.style.setProperty('--mx',((e.clientX/innerWidth)-.5)*28+'px');root.style.setProperty('--my',((e.clientY/innerHeight)-.5)*28+'px')},{passive:true});});" },
     ],
     title,
@@ -1241,31 +1241,36 @@ export function buildFinalSite(lead: any): {
           ? { bg:"#100c09", text:"#f7eee4", muted:"#b7a69a", accent:"#d59a61", accent2:"#f2d0a8", line:"rgba(255,255,255,.12)", panel:"rgba(26,18,14,.76)", display:"Georgia, 'Times New Roman', serif" }
           : { bg:"#070a10", text:"#eef3fb", muted:"#9ba8b8", accent:"#78a8ff", accent2:"#b8d2ff", line:"rgba(255,255,255,.11)", panel:"rgba(14,19,28,.78)", display:"Inter,ui-sans-serif,system-ui,sans-serif" };
 
-  const title = profile === "delicate"
-    ? "A sua beleza merece uma experiência à altura."
-    : profile === "bold"
-      ? "Presença forte. Movimento. Resultado."
-      : profile === "premium"
-        ? "Credibilidade que se percebe antes de ser explicada."
-        : profile === "sensory"
-          ? "Uma experiência que começa antes do primeiro pedido."
-          : "Uma presença digital feita para transformar atenção em negócio.";
+  const title = profile === "clinic"
+    ? "Estética avançada com naturalidade, precisão e cuidado."
+    : profile === "delicate"
+      ? "A sua beleza merece uma experiência à altura."
+      : profile === "bold"
+        ? "Presença forte. Movimento. Resultado."
+        : profile === "premium"
+          ? "Credibilidade que se percebe antes de ser explicada."
+          : profile === "sensory"
+            ? "Uma experiência que começa antes do primeiro pedido."
+            : "Uma presença digital feita para transformar atenção em negócio.";
 
-  const subtitle = profile === "delicate"
-    ? "Um espaço digital feminino, sofisticado e acolhedor — pensado para transmitir cuidado, desejo e confiança desde o primeiro olhar."
-    : profile === "bold"
-      ? "Uma experiência visual de alto impacto, com ritmo, contraste e caminhos diretos para orçamento, agenda ou venda."
-      : profile === "premium"
-        ? "Uma experiência editorial, precisa e silenciosa — feita para posicionar valor, autoridade e confiança."
-        : profile === "sensory"
-          ? "Atmosfera, identidade e desejo em uma experiência digital que traduz o clima do negócio antes do contato."
-          : opportunity;
+  const subtitle = profile === "clinic"
+    ? "Uma experiência premium em Belo Horizonte para quem busca protocolos personalizados, resultados elegantes e atendimento que começa antes do primeiro procedimento."
+    : profile === "delicate"
+      ? "Um espaço digital feminino, sofisticado e acolhedor — pensado para transmitir cuidado, desejo e confiança desde o primeiro olhar."
+      : profile === "bold"
+        ? "Uma experiência visual de alto impacto, com ritmo, contraste e caminhos diretos para orçamento, agenda ou venda."
+        : profile === "premium"
+          ? "Uma experiência editorial, precisa e silenciosa — feita para posicionar valor, autoridade e confiança."
+          : profile === "sensory"
+            ? "Atmosfera, identidade e desejo em uma experiência digital que traduz o clima do negócio antes do contato."
+            : opportunity;
 
   const serviceList = (() => {
     try {
       const parsed = Array.isArray(lead.services) ? lead.services : JSON.parse(String(lead.services || "[]"));
       if (Array.isArray(parsed) && parsed.length) return parsed.map((x) => String(x)).filter(Boolean).slice(0,4);
     } catch {}
+    if (profile === "clinic") return ["Avaliação personalizada","Toxina botulínica","Bioestimuladores","Harmonização facial","Tecnologias para pele","Contorno corporal"];
     if (profile === "delicate") return ["Corte & finalização","Coloração","Manicure & pedicure","Beleza & autocuidado"];
     if (profile === "bold") return ["Serviços principais","Experiência premium","Atendimento sob medida","Orçamento rápido"];
     if (profile === "premium") return ["Consultoria especializada","Atendimento personalizado","Soluções sob medida","Relacionamento"];
@@ -1273,8 +1278,10 @@ export function buildFinalSite(lead: any): {
     return ["Serviço principal","Soluções","Atendimento","Contato"];
   })();
 
-  const labels = profile === "delicate"
-    ? ["ESSÊNCIA","DETALHE","EXPERIÊNCIA"]
+  const labels = profile === "clinic"
+    ? ["NATURALIDADE","PRECISÃO","CUIDADO"]
+    : profile === "delicate"
+      ? ["ESSÊNCIA","DETALHE","EXPERIÊNCIA"]
     : profile === "bold"
       ? ["IMPACTO","PERFORMANCE","RESULTADO"]
       : profile === "premium"
@@ -1285,73 +1292,41 @@ export function buildFinalSite(lead: any): {
 
   const serviceCards = serviceList.map((service, i) =>
     "<article class='service-card reveal-card'><span class='service-index'>0" + String(i + 1) + "</span><h3>" + escHtml(service) + "</h3><p>" +
-    (profile === "delicate" ? "Apresentação leve, visual e envolvente para valorizar o cuidado por trás de cada serviço." : profile === "bold" ? "Informação direta, visual forte e caminho curto até a ação." : profile === "premium" ? "Contexto, benefício e confiança organizados com linguagem visual sofisticada." : "Benefício e próximo passo apresentados sem fricção.") +
+    (profile === "clinic" ? "Informação clara, benefício bem apresentado e um caminho elegante até a avaliação." : profile === "delicate" ? "Apresentação leve, visual e envolvente para valorizar o cuidado por trás de cada serviço." : profile === "bold" ? "Informação direta, visual forte e caminho curto até a ação." : profile === "premium" ? "Contexto, benefício e confiança organizados com linguagem visual sofisticada." : "Benefício e próximo passo apresentados sem fricção.") +
     "</p></article>"
   ).join("");
 
-  if (profile === "clinic") {
-    const clinicServices = (() => {
-      try {
-        const parsed = Array.isArray(lead.services) ? lead.services : JSON.parse(String(lead.services || "[]"));
-        const usable = Array.isArray(parsed) ? parsed.map((x) => String(x).trim()).filter(Boolean) : [];
-        if (usable.length) return usable.slice(0, 6);
-      } catch {}
-      return [
-        "Avaliação personalizada",
-        "Harmonização facial",
-        "Toxina botulínica",
-        "Bioestimuladores",
-        "Tecnologias para pele",
-        "Contorno corporal",
-      ];
-    })();
-
-    const treatmentDescriptions = [
-      "Plano individual, leitura cuidadosa das suas necessidades e indicação de caminhos possíveis.",
-      "Proporções, equilíbrio e naturalidade com uma abordagem centrada em você.",
-      "Protocolos personalizados para suavizar marcas e preservar expressão e identidade.",
-      "Estímulo e cuidado da pele com foco em textura, firmeza e qualidade.",
-      "Recursos tecnológicos escolhidos de acordo com o objetivo e o perfil da pele.",
-      "Estratégias para valorizar contorno, proporção e bem-estar corporal.",
-    ];
-
-    const treatmentCards = clinicServices.map((service, i) =>
-      "<article class='treatment reveal-card' style='--delay:" + String(i * 70) + "ms'>" +
-        "<div class='treatment-top'><span>0" + String(i + 1) + "</span><span class='arrow'>↗</span></div>" +
-        "<h3>" + escHtml(service) + "</h3>" +
-        "<p>" + escHtml(treatmentDescriptions[i] || "Atendimento personalizado, linguagem clara e um plano pensado para o seu momento.") + "</p>" +
-        "<span class='treatment-link'>Conhecer <b>→</b></span>" +
-      "</article>"
-    ).join("");
-
-    const city = "Belo Horizonte · MG";
-    const heroTitle = "Estética avançada com naturalidade, precisão e cuidado.";
-    const heroSubtitle = "Uma experiência premium em Belo Horizonte para quem busca resultados elegantes, protocolos personalizados e um atendimento que começa antes do primeiro procedimento.";
-    const aboutText = "Cada pessoa chega com uma história, um objetivo e um jeito diferente de se sentir bem. Por isso, a experiência foi pensada para equilibrar técnica, escuta e uma estética que não parece artificial.";
-    const contactLabel = phone ? "Agendar avaliação" : "Conhecer a clínica";
-    const firstLetter = escHtml(name.trim().charAt(0).toUpperCase() || "A");
-
-    const html =
+  const clinicHeader = profile === "clinic"
+    ? "<div class='brand'><span class='clinic-mark'>" + escHtml(name.slice(0,1).toUpperCase() || "A") + "</span><div><span class='clinic-kicker'>CLÍNICA DE ESTÉTICA</span><strong>" + escHtml(name) + "</strong></div></div><nav><a href='#servicos'>Tratamentos</a><a href='#experiencia'>Experiência</a><a href='#contato'>Contato</a></nav><span class='clinic-place'>BELO HORIZONTE · MG</span><a class='top-cta' href='" + escAttr(cta) + "'>Agendar avaliação</a>"
+    : "<div class='brand'><span>" + labels.join(" · ") + "</span><strong>" + escHtml(name) + "</strong></div><nav><a href='#servicos'>Serviços</a><a href='#experiencia'>Experiência</a></nav><a class='top-cta' href='" + escAttr(cta) + "'>" + (profile === "delicate" ? "Agendar" : "Falar agora") + "</a>";
+  const clinicKicker = profile === "clinic" ? "ESTÉTICA AVANÇADA · BELO HORIZONTE · MG" : clinicKicker;
+  const clinicHeroObject = profile === "clinic"
+    ? "<div class='hero-object clinic-hero-object' aria-hidden='true'><div class='clinic-photo'></div><div class='clinic-orbit clinic-orbit-a'></div><div class='clinic-orbit clinic-orbit-b'></div><div class='clinic-float clinic-float-a'>ATENDIMENTO<br><strong>Com hora marcada</strong></div><div class='clinic-float clinic-float-b'>PROTOCOLOS<br><strong>Pensados para você</strong></div></div>"
+    : clinicHeroObject";
+  const clinicStatement = profile === "clinic" ? "Beleza que não precisa parecer feita." : profile === "delicate" ? "Delicadeza não significa fragilidade. Significa saber onde colocar cada detalhe." : profile === "bold" ? "Impacto não precisa gritar. Precisa ter intenção." : profile === "premium" ? "Menos ruído. Mais percepção de valor." : profile === "sensory" ? "O ambiente também vende. A tela precisa fazer sentir." : "Tecnologia sem cara de template.";
+  const clinicExperience = profile === "clinic" ? "Uma clínica onde técnica e acolhimento andam juntos." : profile === "delicate" ? "Uma atmosfera leve, feminina e contemporânea." : profile === "bold" ? "Ritmo visual para negócios que vivem de energia." : profile === "premium" ? "Uma linguagem visual que deixa o posicionamento respirar." : profile === "sensory" ? "Textura, profundidade e movimento para criar desejo." : "Cada movimento tem um motivo.";
+  const clinicContact = profile === "clinic" ? "Seu cuidado merece uma experiência à altura." : profile === "delicate" ? "Seu momento começa antes de chegar ao salão." : profile === "bold" ? "Pronto para colocar a marca em movimento?" : profile === "premium" ? "Uma presença à altura do que você entrega." : profile === "sensory" ? "A experiência começa no primeiro olhar." : "Vamos transformar atenção em conversa.";
+  const html =
     "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'>" +
     "<meta name='theme-color' content='" + palette.bg + "'><meta name='description' content='" + escAttr(opportunity) + "'>" +
     "<title>" + escHtml(name) + " — experiência digital</title><link rel='stylesheet' href='style.css?v=ritty-adaptive-20261008'></head>" +
     "<body class='profile-" + profile + "'>" +
     "<div class='noise' aria-hidden='true'></div><div class='scene' aria-hidden='true'><div class='light light-a'></div><div class='light light-b'></div><div class='orb orb-a'></div><div class='orb orb-b'></div><div class='ring ring-a'></div><div class='ring ring-b'></div></div>" +
-    "<header><div class='brand'><span>" + labels.join(" · ") + "</span><strong>" + escHtml(name) + "</strong></div><nav><a href='#servicos'>Serviços</a><a href='#experiencia'>Experiência</a></nav><a class='top-cta' href='" + escAttr(cta) + "'>" + (profile === "delicate" ? "Agendar" : "Falar agora") + "</a></header>" +
+    "<header>" + clinicHeader + "</header>" +
     "<main>" +
     "<section class='hero reveal'><div class='hero-copy'><span class='eyebrow'>" +
     (profile === "delicate" ? "BELEZA · FEMININO · SOFT LUXURY" : profile === "bold" ? "HIGH IMPACT · PRESENÇA · ENERGIA" : profile === "premium" ? "EDITORIAL · PRECISÃO · VALOR" : profile === "sensory" ? "ATMOSFERA · DESEJO · EXPERIÊNCIA" : "IDENTIDADE · 3D · MOVIMENTO") +
     "</span><h1>" + escHtml(title) + "</h1><p>" + escHtml(subtitle) + "</p><div class='actions'><a class='cta' href='" + escAttr(cta) + "'>" + (profile === "delicate" ? "Quero conhecer" : "Entrar em contato") + "</a><a class='ghost' href='#experiencia'>Explorar experiência <span>↓</span></a></div></div>" +
     "<div class='hero-object' aria-hidden='true'><div class='petal p1'></div><div class='petal p2'></div><div class='petal p3'></div><div class='petal p4'></div><div class='object-core'></div><div class='orbit o1'></div><div class='orbit o2'></div><div class='object-caption'>" + (profile === "delicate" ? "SOFT LUXURY" : profile === "bold" ? "HIGH IMPACT" : profile === "premium" ? "EDITORIAL" : profile === "sensory" ? "ATMOSPHERIC" : "MODERN") + "<small>3D ART DIRECTION</small></div></div></section>" +
     "<section class='statement reveal'><span class='eyebrow'>01 / DIREÇÃO</span><h2>" +
-    (profile === "delicate" ? "Delicadeza não significa fragilidade. Significa saber onde colocar cada detalhe." : profile === "bold" ? "Impacto não precisa gritar. Precisa ter intenção." : profile === "premium" ? "Menos ruído. Mais percepção de valor." : profile === "sensory" ? "O ambiente também vende. A tela precisa fazer sentir." : "Tecnologia sem cara de template.") +
+    clinicStatement +
     "</h2><p>" + escHtml(opportunity) + "</p></section>" +
-    "<section id='servicos' class='services reveal'><div class='section-head'><span class='eyebrow'>02 / O QUE IMPORTA</span><h2>Uma estrutura que acompanha o jeito que " + escHtml(name) + " vende.</h2></div><div class='service-grid'>" + serviceCards + "</div></section>" +
+    "<section id='servicos' class='services reveal'><div class='section-head'><span class='eyebrow'>" + (profile === "clinic" ? "02 / TRATAMENTOS" : "02 / O QUE IMPORTA") + "</span><h2>" + (profile === "clinic" ? "Escolhas precisas para o que você busca." : "Uma estrutura que acompanha o jeito que " + escHtml(name) + " vende.") + "</h2></div><div class='service-grid'>" + serviceCards + "</div></section>" +
     "<section id='experiencia' class='experience reveal'><div class='experience-visual'><div class='depth depth-1'></div><div class='depth depth-2'></div><div class='depth depth-3'></div><span>" + (profile === "delicate" ? "FEEL" : profile === "bold" ? "MOVE" : profile === "premium" ? "VALUE" : profile === "sensory" ? "TASTE" : "CREATE") + "</span></div><div class='experience-copy'><span class='eyebrow'>03 / EXPERIÊNCIA</span><h2>" +
-    (profile === "delicate" ? "Uma atmosfera leve, feminina e contemporânea." : profile === "bold" ? "Ritmo visual para negócios que vivem de energia." : profile === "premium" ? "Uma linguagem visual que deixa o posicionamento respirar." : profile === "sensory" ? "Textura, profundidade e movimento para criar desejo." : "Cada movimento tem um motivo.") +
+    clinicExperience +
     "</h2><div class='feature-list'><div><b>01</b><span>" + escHtml(labels[0]) + "</span><p>Direção visual coerente com a personalidade real do negócio.</p></div><div><b>02</b><span>" + escHtml(labels[1]) + "</span><p>Profundidade, microinterações e movimento usados com intenção.</p></div><div><b>03</b><span>" + escHtml(labels[2]) + "</span><p>CTA claro sem transformar a experiência em um painel genérico.</p></div></div></div></section>" +
     "<section class='contact reveal' id='contato'><div><span class='eyebrow'>04 / PRÓXIMO PASSO</span><h2>" +
-    (profile === "delicate" ? "Seu momento começa antes de chegar ao salão." : profile === "bold" ? "Pronto para colocar a marca em movimento?" : profile === "premium" ? "Uma presença à altura do que você entrega." : profile === "sensory" ? "A experiência começa no primeiro olhar." : "Vamos transformar atenção em conversa.") +
+    clinicContact +
     "</h2><p>Esta demonstração é uma amostra da direção. A versão final recebe identidade, fotos, textos, provas sociais e integrações reais.</p><a class='cta' href='" + escAttr(cta) + "'>" + (profile === "delicate" ? "Agendar atendimento" : "Solicitar atendimento") + "</a></div><div class='contact-orb'></div></section>" +
     "</main><script src='script.js?v=ritty-adaptive-20261008'></script></body></html>";
 
@@ -1367,6 +1342,10 @@ export function buildFinalSite(lead: any): {
     ".contact{position:relative;overflow:hidden;padding:70px;border:1px solid var(--line);border-radius:36px;background:var(--panel);backdrop-filter:blur(22px);min-height:430px;display:flex;align-items:center}.contact>div:first-child{position:relative;z-index:3;max-width:900px}.contact h2{font-size:clamp(48px,7vw,88px);margin:15px 0}.contact p{max-width:680px;color:var(--muted);line-height:1.7;margin-bottom:25px}.contact-orb{position:absolute;right:-100px;bottom:-180px;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff6 0 2%,var(--accent) 10%,transparent 62%);filter:blur(8px);opacity:.48;animation:contactFloat 9s ease-in-out infinite}" +
     ".reveal{opacity:0;transform:translateY(42px);transition:opacity 1s cubic-bezier(.2,.7,.2,1),transform 1s cubic-bezier(.2,.7,.2,1)}.reveal.visible{opacity:1;transform:none}.reveal-card{animation:cardIn .9s both}@keyframes lightA{50%{transform:translate3d(-60px,45px,0) scale(1.08)}}@keyframes lightB{50%{transform:translate3d(40px,-50px,0) scale(1.1)}}@keyframes orbA{50%{transform:translate3d(-35px,25px,60px) scale(1.08)}}@keyframes orbB{50%{transform:translate3d(30px,-35px,20px)}}@keyframes ringA{to{transform:rotateX(70deg) rotateZ(360deg)}}@keyframes ringB{to{transform:rotateY(68deg) rotateZ(-360deg)}}@keyframes objectFloat{50%{transform:rotate(-5deg) rotateX(22deg) translate3d(0,-18px,35px)}}@keyframes corePulse{50%{transform:scale(1.16) translateZ(30px)}}@keyframes orbit1{to{transform:rotateX(68deg) rotateZ(372deg)}}@keyframes orbit2{to{transform:rotateY(66deg) rotateZ(-340deg)}}@keyframes petalBreath{50%{filter:drop-shadow(0 30px 55px color-mix(in srgb,var(--accent) 30%,transparent));opacity:.95;transform:scale(1.08) rotate(4deg)}}@keyframes depth1{to{transform:rotateX(67deg) rotateZ(360deg)}}@keyframes depth2{to{transform:rotateY(66deg) rotateZ(-340deg)}}@keyframes contactFloat{50%{transform:translate3d(-40px,-45px,30px) scale(1.08)}}@keyframes cardIn{from{opacity:.5;transform:translateY(16px) rotateX(3deg)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}}@media(max-width:900px){header{padding:0 18px}nav{display:none}.hero{grid-template-columns:1fr;min-height:0;padding-top:55px;gap:15px}.hero-object{min-height:390px;height:72vw;order:-1}.statement{padding:90px 0}.service-grid{grid-template-columns:1fr 1fr}.experience{grid-template-columns:1fr;padding:100px 0}.experience-visual{height:360px}.contact{padding:42px 28px}}@media(max-width:560px){header{height:74px}.brand span{display:none}.brand strong{font-size:15px}.top-cta{font-size:11px;padding:10px 13px}main{padding-left:18px;padding-right:18px}.hero h1{font-size:clamp(48px,14vw,76px)}.profile-delicate .hero h1{font-size:clamp(50px,14vw,74px)}.hero p{font-size:16px}.actions{flex-direction:column;align-items:stretch}.actions a{justify-content:center}.hero-object{min-height:300px}.service-grid{grid-template-columns:1fr}.service-card{min-height:220px}.statement{padding:80px 0 100px}.experience{padding:90px 0}.experience-visual{height:280px}.contact{min-height:420px;padding:36px 24px;border-radius:28px}.contact h2{font-size:clamp(43px,13vw,65px)}}";
 
+
+    const finalCss = profile === "clinic"
+      ? css + ".profile-clinic{--clinic-shadow:rgba(73,49,40,.13)}.profile-clinic header{height:88px;background:rgba(247,243,238,.88);box-shadow:0 10px 35px rgba(55,39,31,.05)}.profile-clinic .brand{align-items:center;gap:11px}.profile-clinic .clinic-mark{width:38px;height:38px;border:1px solid var(--accent);border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-size:18px;color:var(--accent)}.profile-clinic .clinic-kicker{display:block;color:var(--accent);font-size:7px;letter-spacing:.18em;font-weight:900;margin-bottom:3px}.profile-clinic .brand strong{font-family:var(--display);font-weight:500;font-size:18px}.profile-clinic .clinic-place{font-size:7px;letter-spacing:.14em;color:var(--muted);padding:10px 12px;border:1px solid var(--line);border-radius:99px}.profile-clinic .top-cta{background:#241f1c;color:#fff8f2;padding:13px 18px}.profile-clinic .hero{min-height:820px;background:radial-gradient(500px 420px at 85% 18%,rgba(166,111,92,.10),transparent 70%);border-radius:0}.profile-clinic .hero h1{font-family:var(--display);font-weight:500;letter-spacing:-.055em;max-width:760px}.profile-clinic .hero p{color:#756b64}.profile-clinic .hero-object{height:min(52vw,640px);min-height:430px}.profile-clinic .clinic-hero-object{display:grid;place-items:center}.profile-clinic .clinic-hero-object:before{display:none}.profile-clinic .clinic-photo{width:min(420px,74%);height:540px;border-radius:220px 220px 28px 28px;background:linear-gradient(180deg,rgba(27,20,17,.04),rgba(27,20,17,.25)),url('https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=1100&q=88');background-size:cover;background-position:center 18%;box-shadow:0 45px 100px var(--clinic-shadow);transform:rotateY(calc(var(--mx,0px)*.13)) rotateX(calc(var(--my,0px)*-.1));transition:transform .18s ease;z-index:3}.profile-clinic .clinic-photo:before{content:'';position:absolute;inset:10px;border:1px solid rgba(255,255,255,.5);border-radius:210px 210px 20px 20px}.clinic-orbit{position:absolute;border:1px solid rgba(166,111,92,.35);border-radius:50%;z-index:1}.clinic-orbit-a{width:560px;height:370px;transform:rotateX(68deg);animation:clinicOrbitA 18s linear infinite}.clinic-orbit-b{width:450px;height:295px;transform:rotateY(65deg) rotateZ(18deg);animation:clinicOrbitB 21s linear infinite}.clinic-float{position:absolute;z-index:4;padding:11px 13px;border:1px solid rgba(55,40,32,.1);border-radius:13px;background:rgba(255,253,249,.86);backdrop-filter:blur(15px);box-shadow:0 18px 50px rgba(67,45,37,.1);font-size:7px;letter-spacing:.14em;color:var(--accent);font-weight:900}.clinic-float strong{display:block;color:var(--text);font-family:var(--display);font-size:14px;letter-spacing:0;margin-top:4px;font-weight:500}.clinic-float-a{right:1%;top:14%}.clinic-float-b{left:1%;bottom:10%}.profile-clinic .statement{padding-top:100px}.profile-clinic .statement h2,.profile-clinic .section-head h2,.profile-clinic .experience-copy h2,.profile-clinic .contact h2{font-family:var(--display);font-weight:500}.profile-clinic .service-grid{grid-template-columns:repeat(3,1fr)}.profile-clinic .service-card{background:rgba(255,253,249,.72);border-radius:24px;min-height:300px;box-shadow:0 12px 40px rgba(67,45,37,.05)}.profile-clinic .service-card h3{font-family:var(--display);font-weight:500;font-size:30px}.profile-clinic .service-card:hover{box-shadow:0 32px 70px rgba(67,45,37,.12);border-color:rgba(166,111,92,.35)}.profile-clinic .experience{padding-top:140px;padding-bottom:140px}.profile-clinic .contact{background:#241f1c;border-color:#241f1c;border-radius:34px}.profile-clinic .contact-orb{background:radial-gradient(circle at 35% 30%,#fff7 0 2%,#a66f5c 12%,transparent 63%)}@keyframes clinicOrbitA{to{transform:rotateX(68deg) rotateZ(360deg)}}@keyframes clinicOrbitB{to{transform:rotateY(65deg) rotateZ(-340deg)}}@media(max-width:900px){.profile-clinic .clinic-place{display:none}.profile-clinic .hero{min-height:0;padding-top:40px}.profile-clinic .hero-object{min-height:390px;height:72vw;order:-1}.profile-clinic .clinic-photo{height:430px}.profile-clinic .service-grid{grid-template-columns:1fr 1fr}}@media(max-width:560px){.profile-clinic header{height:74px}.profile-clinic .clinic-kicker{font-size:6px}.profile-clinic .clinic-mark{width:34px;height:34px}.profile-clinic .hero h1{font-size:clamp(49px,14vw,74px)}.profile-clinic .clinic-photo{height:350px}.profile-clinic .clinic-orbit-a{width:420px;height:280px}.profile-clinic .clinic-orbit-b{width:340px;height:230px}.profile-clinic .service-grid{grid-template-columns:1fr}}"
+      : css;
   const js = "document.addEventListener('DOMContentLoaded',function(){const root=document.documentElement;const io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting)e.target.classList.add('visible')})},{threshold:.12});document.querySelectorAll('.reveal').forEach(function(e){io.observe(e)});window.addEventListener('pointermove',function(e){root.style.setProperty('--mx',((e.clientX/innerWidth)-.5)*34+'px');root.style.setProperty('--my',((e.clientY/innerHeight)-.5)*34+'px')},{passive:true});document.querySelectorAll('.service-card').forEach(function(card,i){card.style.animationDelay=(i*90)+'ms'});});";
 
   return {
