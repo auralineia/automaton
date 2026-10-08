@@ -14,6 +14,7 @@ import {
   fulfillPaidOrder,
   handleStripeWebhook,
   confirmStripeSuccess,
+  buildFinalSite,
 } from "../revenue/commerce.js";
 import { revenueAutopilotCycle } from "../revenue/engine.js";
 
@@ -55,6 +56,7 @@ export async function handleRevenueRequest(
   const pathname = url.pathname;
   const handled =
     pathname.startsWith("/sites/") ||
+    pathname === "/revenue/test-site" ||
     pathname === "/revenue" ||
     pathname === "/api/revenue" ||
     pathname.startsWith("/api/revenue/") ||
@@ -63,6 +65,29 @@ export async function handleRevenueRequest(
     pathname === "/revenue/cancelled";
 
   if (!handled) return false;
+
+  if (pathname === "/revenue/test-site" && req.method === "GET") {
+    const lead = {
+      name: "Ateliê Bella Guarujá",
+      opportunity: "Salão de beleza feminino premium no Guarujá, com foco em beleza, autocuidado e experiência.",
+      phone: "+5513999999999",
+      email: "contato@ateliebellaguaruja.test",
+    };
+    const built = buildFinalSite(lead);
+    const requested = url.searchParams.get("file") || "index.html";
+    const file = built.files.find((item) => item.path === requested);
+    if (!file) {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+      res.end("Test file not found");
+      return true;
+    }
+    const type = requested.endsWith(".css") ? "text/css; charset=utf-8" :
+      requested.endsWith(".js") ? "text/javascript; charset=utf-8" :
+      "text/html; charset=utf-8";
+    res.writeHead(200, { "Content-Type": type, "Cache-Control": "no-store" });
+    res.end(file.content);
+    return true;
+  }
 
   if (pathname.startsWith("/sites/") && req.method === "GET") {
     const match = pathname.match(/^\/sites\/([A-Za-z0-9_-]+)\/?(.*)$/);
