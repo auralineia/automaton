@@ -1211,7 +1211,7 @@ export async function confirmStripeSuccess(
   return processPaidStripeSession(db, session);
 }
 
-function buildFinalSite(lead: any): {
+export function buildFinalSite(lead: any): {
   files: Array<{ path: string; content: string }>;
   title: string;
 } {
