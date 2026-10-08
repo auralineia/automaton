@@ -74,12 +74,12 @@ export async function handleRevenueRequest(
       return true;
     }
     const lead = {
-      name: "Clínica Áurea BH",
-      opportunity: "Clínica de estética avançada em Belo Horizonte, com foco em naturalidade, protocolos personalizados, cuidado e experiência premium.",
-      phone: "+5531999999999",
-      email: "contato@clinicaaureabh.test",
-      business_type: "clínica de estética avançada",
-      services: JSON.stringify(["Avaliação personalizada","Toxina botulínica","Bioestimuladores","Harmonização facial","Tecnologias para pele","Contorno corporal"]),
+      name: "Brava Garage Goiânia",
+      opportunity: "Lava-jato premium em Goiânia, com foco em lavagem detalhada, estética automotiva, proteção e experiência para proprietários que cuidam do carro.",
+      phone: "+5562999999999",
+      email: "contato@bravagaragegoiania.test",
+      business_type: "lava-jato e estética automotiva",
+      services: JSON.stringify(["Lavagem premium","Lavagem detalhada","Higienização interna","Polimento técnico","Vitrificação","Estética automotiva"]),
     };
     const built = buildFinalSite(lead);
     const requested = url.searchParams.get("file") || "index.html";
