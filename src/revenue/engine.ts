@@ -568,8 +568,8 @@ export async function revenueAutopilotCycle(db: AutomatonDatabase, options: { ni
       if (!host.includes(".") || host.length < 5) continue;
       if (brazilTarget && !globalTarget && !host.endsWith(".com.br")) continue;
       if (/^(youtube\.com|youtu\.be|instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|bing\.com|google\.com|duckduckgo\.com|wikipedia\.org|seattlemet\.com|theinfatuation\.com|jeopardylabs\.com)$/i.test(host)) continue;
-      if (isLikelyNonCommercialProspect(result.title, result.snippet, result.url)) continue;
-      if (isLikelyEditorialResult(result.title, result.snippet)) continue;
+      // Search snippets are noisy. Commercial/editorial classification is deferred
+      // to the real homepage so valid prospects are not discarded before research.
       if (isPlaceholderProspect(result.title, result.snippet, result.url)) continue;
       const id = ensureLead(db, { name: result.title || host, website: result.url, source: "public-search", query, location, snippet: result.snippet });
       candidateIds.push(id);
