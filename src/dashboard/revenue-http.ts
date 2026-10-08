@@ -57,6 +57,7 @@ export async function handleRevenueRequest(
   const handled =
     pathname.startsWith("/sites/") ||
     pathname === "/revenue/test-site" ||
+    pathname === "/revenue/test-site/" ||
     pathname === "/revenue" ||
     pathname === "/api/revenue" ||
     pathname.startsWith("/api/revenue/") ||
@@ -66,7 +67,12 @@ export async function handleRevenueRequest(
 
   if (!handled) return false;
 
-  if (pathname === "/revenue/test-site" && req.method === "GET") {
+  if ((pathname === "/revenue/test-site" || pathname === "/revenue/test-site/") && req.method === "GET") {
+    if (pathname === "/revenue/test-site") {
+      res.writeHead(301, { "Location": "/revenue/test-site/", "Cache-Control": "no-store" });
+      res.end();
+      return true;
+    }
     const lead = {
       name: "Ateliê Bella Guarujá",
       opportunity: "Salão de beleza feminino premium no Guarujá, com foco em beleza, autocuidado e experiência.",
@@ -75,14 +81,16 @@ export async function handleRevenueRequest(
     };
     const built = buildFinalSite(lead);
     const requested = url.searchParams.get("file") || "index.html";
-    const file = built.files.find((item) => item.path === requested);
+    const normalizedPath = pathname.startsWith("/revenue/test-site/") ? pathname.slice("/revenue/test-site/".length) : requested;
+    const requestedFile = normalizedPath || requested;
+    const file = built.files.find((item) => item.path === requestedFile);
     if (!file) {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
       res.end("Test file not found");
       return true;
     }
-    const type = requested.endsWith(".css") ? "text/css; charset=utf-8" :
-      requested.endsWith(".js") ? "text/javascript; charset=utf-8" :
+    const type = requestedFile.endsWith(".css") ? "text/css; charset=utf-8" :
+      requestedFile.endsWith(".js") ? "text/javascript; charset=utf-8" :
       "text/html; charset=utf-8";
     res.writeHead(200, { "Content-Type": type, "Cache-Control": "no-store" });
     res.end(file.content);
