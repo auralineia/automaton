@@ -1078,6 +1078,67 @@ export async function runAgentLoop(
         }
       }
 
+      // Revenue mode gets a deterministic execution path: the sales cycle itself does not
+      // need parent-agent inference or the general goal planner. This prevents the model
+      // from drifting into unrelated work_create/create_goal actions while a sales cycle
+      // is active. The revenue engine remains approval-gated for external outreach and checkout.
+      if (
+        pendingInput?.source !== "creator" &&
+        !db.getKV("creator_task_active") &&
+        db.raw.prepare("SELECT 1 FROM inbox_messages WHERE status = 'received' AND from_address = 'dashboard://creator' LIMIT 1").get() == null
+      ) {
+        const activeRevenueGoal = db.raw.prepare(
+          "SELECT id,title FROM goals WHERE status='active' AND lower(COALESCE(title,'')) LIKE 'revenue acquisition cycle%' ORDER BY created_at ASC LIMIT 1",
+        ).get() as { id?: string; title?: string } | undefined;
+
+        if (activeRevenueGoal?.id) {
+          try {
+            const { revenueAutopilotCycle } = await import("../revenue/engine.js");
+            const offerPriceCents = Math.min(
+              50_000,
+              Math.max(20_000, Number(process.env.RITTY_OFFER_PRICE_CENTS || "39700")),
+            );
+            const result = await revenueAutopilotCycle(db, {
+              niche: process.env.RITTY_REVENUE_NICHE || "empresas que podem melhorar o site",
+              location: process.env.RITTY_REVENUE_REGION || "Brasil",
+              limit: Number(process.env.RITTY_REVENUE_LIMIT || 6),
+              priceCents: offerPriceCents,
+            });
+
+            const completedAt = new Date().toISOString();
+            db.raw.prepare(
+              "UPDATE task_graph SET status='cancelled', assigned_to=NULL, completed_at=COALESCE(completed_at,?) WHERE goal_id=? AND status IN ('pending','assigned','running')",
+            ).run(completedAt, activeRevenueGoal.id);
+            db.raw.prepare(
+              "UPDATE goals SET status='completed', completed_at=COALESCE(completed_at,?) WHERE id=? AND status='active'",
+            ).run(completedAt, activeRevenueGoal.id);
+
+            logger.info("[REVENUE] Deterministic sales cycle executed.", {
+              goalId: activeRevenueGoal.id,
+              priceCents: offerPriceCents,
+              result: String(result).slice(0, 2400),
+            });
+          } catch (error) {
+            const failedAt = new Date().toISOString();
+            db.raw.prepare(
+              "UPDATE goals SET status='failed', completed_at=COALESCE(completed_at,?) WHERE id=? AND status='active'",
+            ).run(failedAt, activeRevenueGoal.id);
+            logger.error(
+              "[REVENUE] Deterministic sales cycle failed.",
+              error instanceof Error ? error : undefined,
+              { goalId: activeRevenueGoal.id },
+            );
+          }
+
+          const nextEligibleAt = new Date(Date.now() + getAutonomousCycleIntervalMs()).toISOString();
+          db.setKV("sleep_until", nextEligibleAt);
+          db.setAgentState("sleeping");
+          onStateChange?.("sleeping");
+          running = false;
+          break;
+        }
+      }
+
       // Financial goals may be researched, planned, and prepared autonomously.
       // Money-moving or legally binding actions remain gated by tool policy and
       // explicit creator approval; a goal label alone must not park the runtime.
