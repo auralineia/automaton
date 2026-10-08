@@ -534,49 +534,7 @@ function buildDemoSite(lead: any): {
   const strengthLine = strengths.length ? strengths.map(escHtml).join(" · ") : "Base atual identificada e pronta para evolução.";
   const title = name + " — experiência digital";
 
-  if (profile === "clinic") {
-    const clinicServices = (() => {
-      try {
-        const parsed = Array.isArray(lead.services) ? lead.services : JSON.parse(String(lead.services || "[]"));
-        const usable = Array.isArray(parsed) ? parsed.map((x) => String(x).trim()).filter(Boolean) : [];
-        if (usable.length) return usable.slice(0, 6);
-      } catch {}
-      return [
-        "Avaliação personalizada",
-        "Harmonização facial",
-        "Toxina botulínica",
-        "Bioestimuladores",
-        "Tecnologias para pele",
-        "Contorno corporal",
-      ];
-    })();
-
-    const treatmentDescriptions = [
-      "Plano individual, leitura cuidadosa das suas necessidades e indicação de caminhos possíveis.",
-      "Proporções, equilíbrio e naturalidade com uma abordagem centrada em você.",
-      "Protocolos personalizados para suavizar marcas e preservar expressão e identidade.",
-      "Estímulo e cuidado da pele com foco em textura, firmeza e qualidade.",
-      "Recursos tecnológicos escolhidos de acordo com o objetivo e o perfil da pele.",
-      "Estratégias para valorizar contorno, proporção e bem-estar corporal.",
-    ];
-
-    const treatmentCards = clinicServices.map((service, i) =>
-      "<article class='treatment reveal-card' style='--delay:" + String(i * 70) + "ms'>" +
-        "<div class='treatment-top'><span>0" + String(i + 1) + "</span><span class='arrow'>↗</span></div>" +
-        "<h3>" + escHtml(service) + "</h3>" +
-        "<p>" + escHtml(treatmentDescriptions[i] || "Atendimento personalizado, linguagem clara e um plano pensado para o seu momento.") + "</p>" +
-        "<span class='treatment-link'>Conhecer <b>→</b></span>" +
-      "</article>"
-    ).join("");
-
-    const city = "Belo Horizonte · MG";
-    const heroTitle = "Estética avançada com naturalidade, precisão e cuidado.";
-    const heroSubtitle = "Uma experiência premium em Belo Horizonte para quem busca resultados elegantes, protocolos personalizados e um atendimento que começa antes do primeiro procedimento.";
-    const aboutText = "Cada pessoa chega com uma história, um objetivo e um jeito diferente de se sentir bem. Por isso, a experiência foi pensada para equilibrar técnica, escuta e uma estética que não parece artificial.";
-    const contactLabel = phone ? "Agendar avaliação" : "Conhecer a clínica";
-    const firstLetter = escHtml(name.trim().charAt(0).toUpperCase() || "A");
-
-    const html =
+  const html =
       "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'>" +
       "<meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'>" +
       "<meta name='theme-color' content='#f5f1ec'><meta name='description' content='" + escAttr("Clínica de estética em Belo Horizonte com atendimento personalizado, estética avançada e experiência premium.") + "'>" +
@@ -1401,7 +1359,49 @@ export function buildFinalSite(lead: any): {
     "</p></article>"
   ).join("");
 
-  const html =
+  if (profile === "clinic") {
+    const clinicServices = (() => {
+      try {
+        const parsed = Array.isArray(lead.services) ? lead.services : JSON.parse(String(lead.services || "[]"));
+        const usable = Array.isArray(parsed) ? parsed.map((x) => String(x).trim()).filter(Boolean) : [];
+        if (usable.length) return usable.slice(0, 6);
+      } catch {}
+      return [
+        "Avaliação personalizada",
+        "Harmonização facial",
+        "Toxina botulínica",
+        "Bioestimuladores",
+        "Tecnologias para pele",
+        "Contorno corporal",
+      ];
+    })();
+
+    const treatmentDescriptions = [
+      "Plano individual, leitura cuidadosa das suas necessidades e indicação de caminhos possíveis.",
+      "Proporções, equilíbrio e naturalidade com uma abordagem centrada em você.",
+      "Protocolos personalizados para suavizar marcas e preservar expressão e identidade.",
+      "Estímulo e cuidado da pele com foco em textura, firmeza e qualidade.",
+      "Recursos tecnológicos escolhidos de acordo com o objetivo e o perfil da pele.",
+      "Estratégias para valorizar contorno, proporção e bem-estar corporal.",
+    ];
+
+    const treatmentCards = clinicServices.map((service, i) =>
+      "<article class='treatment reveal-card' style='--delay:" + String(i * 70) + "ms'>" +
+        "<div class='treatment-top'><span>0" + String(i + 1) + "</span><span class='arrow'>↗</span></div>" +
+        "<h3>" + escHtml(service) + "</h3>" +
+        "<p>" + escHtml(treatmentDescriptions[i] || "Atendimento personalizado, linguagem clara e um plano pensado para o seu momento.") + "</p>" +
+        "<span class='treatment-link'>Conhecer <b>→</b></span>" +
+      "</article>"
+    ).join("");
+
+    const city = "Belo Horizonte · MG";
+    const heroTitle = "Estética avançada com naturalidade, precisão e cuidado.";
+    const heroSubtitle = "Uma experiência premium em Belo Horizonte para quem busca resultados elegantes, protocolos personalizados e um atendimento que começa antes do primeiro procedimento.";
+    const aboutText = "Cada pessoa chega com uma história, um objetivo e um jeito diferente de se sentir bem. Por isso, a experiência foi pensada para equilibrar técnica, escuta e uma estética que não parece artificial.";
+    const contactLabel = phone ? "Agendar avaliação" : "Conhecer a clínica";
+    const firstLetter = escHtml(name.trim().charAt(0).toUpperCase() || "A");
+
+    const html =
     "<!doctype html><html lang='pt-BR'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'>" +
     "<meta name='theme-color' content='" + palette.bg + "'><meta name='description' content='" + escAttr(opportunity) + "'>" +
     "<title>" + escHtml(name) + " — experiência digital</title><link rel='stylesheet' href='style.css?v=ritty-adaptive-20261008'></head>" +
