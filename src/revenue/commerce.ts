@@ -857,9 +857,10 @@ export function recordLeadResponse(
       ).get(lead.id) as any;
       const channel = lastMessage?.channel === "email" ? "email" : "manual";
       const subject = lastMessage?.subject ? "Re: " + String(lastMessage.subject).replace(/^Re:\s*/i, "") : "Re: uma melhoria concreta para " + lead.name;
-      const previewUrl = String(
-        db.raw.prepare("SELECT preview_url FROM revenue_offers WHERE lead_id=? ORDER BY created_at DESC LIMIT 1").get(lead.id)?.preview_url || "",
-      );
+      const latestOfferForReply = db.raw.prepare(
+        "SELECT preview_url FROM revenue_offers WHERE lead_id=? ORDER BY created_at DESC LIMIT 1",
+      ).get(lead.id) as any;
+      const previewUrl = String(latestOfferForReply?.preview_url || "");
       const body = [
         "Olá, time da " + lead.name + ",",
         "",
