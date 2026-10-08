@@ -1082,9 +1082,9 @@ export async function runAgentLoop(
       // One-time production E2E verification: force one revenue cycle after this
       // deployment so we can observe the real discovery/qualification output in logs.
       // The marker prevents this verification from running again on later restarts.
-      if (db.getKV("revenue_deterministic_test_v1") !== "1") {
+      if (db.getKV("revenue_deterministic_test_v2") !== "1") {
         db.deleteKV("autonomy.last_seeded_at");
-        db.setKV("revenue_deterministic_test_v1", "1");
+        db.setKV("revenue_deterministic_test_v2", "1");
         logger.info("[REVENUE] One-time production E2E verification armed.");
       }
 
